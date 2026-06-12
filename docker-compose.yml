@@ -6,7 +6,16 @@ services:
     volumes:
       - ./output:/app/output
       - ./watch_in:/app/watch_in
+      - ./knowledge:/app/knowledge
       - ./config.yaml:/app/config.yaml
+      - ./data:/app/data
+      - ./logs:/app/logs
     environment:
       - WHISPER_DEVICE=cpu
+      - PYTHONIOENCODING=utf-8
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8766/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

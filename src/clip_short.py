@@ -123,11 +123,20 @@ def clip_vertical_short(
             )
             windows = [(start, actual_len)]
     else:
-        start = _pick_start_legacy(segments, duration, position)
-        actual_len = float(clip_len)
-        if start + actual_len > duration:
-            start = max(0.0, duration - actual_len)
-        windows = [(start, actual_len)]
+        beat_windows = None
+        try:
+            from .bgm_beat import suggest_clip_windows_by_beat
+            beat_windows = suggest_clip_windows_by_beat(duration, cfg, clip_len)
+        except Exception:
+            pass
+        if beat_windows and (cfg.get("bgm_beat") or {}).get("enabled", False):
+            windows = beat_windows
+        else:
+            start = _pick_start_legacy(segments, duration, position)
+            actual_len = float(clip_len)
+            if start + actual_len > duration:
+                start = max(0.0, duration - actual_len)
+            windows = [(start, actual_len)]
 
     outputs: list[dict[str, Any]] = []
     for idx, (start, actual_len) in enumerate(windows):

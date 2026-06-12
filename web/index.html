@@ -20,7 +20,12 @@
   <div class="nav-item" data-page="config"><span>⚙️</span> <span>LM Studio</span></div>
   <div class="nav-item" data-page="copy"><span>✍️</span> <span>文案配置</span></div>
   <div class="nav-item" data-page="terminology"><span>📖</span> <span>术语表</span></div>
+  <div class="nav-item" data-page="analytics"><span>📈</span> <span>数据看板</span></div>
+  <div class="nav-item" data-page="tools"><span>🛠</span> <span>工具</span></div>
   <div class="nav-item" data-page="assets"><span>📁</span> <span>素材库</span></div>
+  <div class="sidebar-footer" style="margin-top:auto;padding:1rem">
+    <button type="button" class="btn btn-secondary btn-sm" id="theme-toggle" style="width:100%">切换浅色主题</button>
+  </div>
 </nav>
 
 <main class="main">
@@ -65,6 +70,19 @@
         智能剪辑、AI 解说、推广文案需要 LM Studio。请启动 LM Studio → 加载模型 → 开启 Local Server（默认端口 1234）。
       </p>
       <a class="btn btn-secondary btn-sm" href="https://lmstudio.ai/" target="_blank" rel="noopener">打开 LM Studio 官网</a>
+    </div>
+    <div class="card">
+      <div class="card-title">耗时分析</div>
+      <div id="timing-analytics" class="hint-text">加载中...</div>
+      <p id="lm-cost-hint" class="hint-text" style="margin-top:6px"></p>
+    </div>
+    <div class="card">
+      <div class="card-title">GPU 队列</div>
+      <div id="queue-status" class="hint-text">加载中...</div>
+      <div class="btn-row" style="margin-top:0.75rem">
+        <button type="button" class="btn btn-secondary btn-sm" id="btn-queue-pause">暂停排队</button>
+        <button type="button" class="btn btn-secondary btn-sm" id="btn-queue-resume">恢复排队</button>
+      </div>
     </div>
     <div class="card">
       <div class="card-title">概览</div>
@@ -161,6 +179,9 @@
         <button class="btn btn-secondary" id="batch-refresh-btn">刷新列表</button>
       </div>
       <div id="batch-list" style="margin-top:1rem">加载中...</div>
+      <div class="btn-row" style="margin-top:1rem">
+        <a class="btn btn-secondary btn-sm" href="/api/batch/report.html" target="_blank">查看 HTML 报告</a>
+      </div>
     </div>
   </section>
 
@@ -400,6 +421,86 @@
     </div>
   </section>
 
+  <section id="page-analytics" class="page">
+    <h1 class="page-title">数据看板</h1>
+    <div class="card"><div id="dashboard-stats" class="hint-text">加载中...</div></div>
+    <div class="card"><div class="card-title">发布日历</div><div id="dashboard-schedules"></div></div>
+    <div class="card"><div class="card-title">任务列表</div><div id="dashboard-jobs"></div></div>
+  </section>
+
+  <!-- Tools -->
+  <section id="page-tools" class="page">
+    <h1 class="page-title">工具</h1>
+    <div class="card">
+      <div class="card-title">B 站 OAuth</div>
+      <p class="hint-text">在 config 中配置 publish.bilibili.client_id / client_secret 后授权。</p>
+      <div class="btn-row">
+        <button type="button" class="btn btn-primary btn-sm" id="btn-bili-oauth">打开授权页</button>
+        <span id="bili-oauth-status" class="hint-text"></span>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Prompt 模板</div>
+      <div id="prompt-templates-list">加载中...</div>
+      <div class="form-grid" style="margin-top:1rem">
+        <div class="form-group"><label>模板 ID</label><input id="tpl-id" placeholder="my_template"></div>
+        <div class="form-group"><label>名称</label><input id="tpl-name" placeholder="技术教程"></div>
+        <div class="form-group full"><label>JSON 内容</label><textarea id="tpl-json" class="preview-box" style="min-height:120px;font-family:monospace"></textarea></div>
+      </div>
+      <button type="button" class="btn btn-primary btn-sm" id="btn-save-template">保存模板</button>
+    </div>
+    <div class="card">
+      <div class="card-title">多账号矩阵</div>
+      <textarea id="accounts-json" class="preview-box" style="min-height:100px;font-family:monospace"></textarea>
+      <button type="button" class="btn btn-primary btn-sm" id="btn-save-accounts" style="margin-top:8px">保存账号</button>
+    </div>
+    <div class="card">
+      <div class="card-title">发布日历</div>
+      <div id="schedule-calendar">加载中...</div>
+      <button type="button" class="btn btn-secondary btn-sm" id="btn-run-schedules" style="margin-top:8px">立即执行到期发布</button>
+    </div>
+    <div class="card">
+      <div class="card-title">任务恢复</div>
+      <input type="file" id="restore-zip" accept=".zip">
+      <button type="button" class="btn btn-primary btn-sm" id="btn-restore-job" style="margin-top:8px">上传备份 ZIP 恢复</button>
+    </div>
+    <div class="card">
+      <div class="card-title">RAG 知识库</div>
+      <div id="knowledge-list" class="hint-text">加载中...</div>
+      <div class="form-group" style="margin-top:8px"><label>文件名</label><input id="knowledge-name" placeholder="project.md"></div>
+      <textarea id="knowledge-content" class="preview-box" style="min-height:100px"></textarea>
+      <button type="button" class="btn btn-primary btn-sm" id="btn-save-knowledge">保存文档</button>
+    </div>
+    <div class="card">
+      <div class="card-title">模板市场</div>
+      <div id="template-market-list"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Whisper 热词</div>
+      <input id="hotwords-input" placeholder="Spring Boot, Redis, JetLinks" style="width:100%;margin-bottom:8px">
+      <button type="button" class="btn btn-primary btn-sm" id="btn-save-hotwords">保存热词到配置</button>
+    </div>
+    <div class="card">
+      <div class="card-title">A/B 数据回流</div>
+      <div id="ab-suggest" class="hint-text"></div>
+      <div class="form-grid" style="margin-top:8px">
+        <input id="ab-title" placeholder="标题">
+        <input id="ab-views" type="number" placeholder="播放量">
+        <input id="ab-ctr" type="number" step="0.01" placeholder="CTR 0.05">
+        <button type="button" class="btn btn-primary btn-sm" id="btn-save-ab">录入</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">API 文档</div>
+      <a class="btn btn-secondary btn-sm" href="/docs" target="_blank">OpenAPI / Swagger</a>
+      <span id="config-validate-hint" class="hint-text" style="margin-left:8px"></span>
+    </div>
+    <div class="card">
+      <div class="card-title">审计日志（最近 300 条）</div>
+      <div class="preview-box" id="audit-log-box" style="max-height:320px;overflow:auto;font-size:0.75rem">加载中...</div>
+    </div>
+  </section>
+
   <!-- Assets -->
   <section id="page-assets" class="page">
     <h1 class="page-title">素材库</h1>
@@ -534,6 +635,9 @@
       <button class="btn btn-secondary btn-sm rerun-btn" data-step="short">重跑竖屏</button>
       <button class="btn btn-secondary btn-sm rerun-btn" data-step="pack">打包下载</button>
       <button class="btn btn-secondary btn-sm" id="dub-ab-btn">AB 双音色</button>
+      <button class="btn btn-secondary btn-sm" id="backup-job-btn">备份 ZIP</button>
+      <button class="btn btn-secondary btn-sm" id="cancel-queue-job-btn">取消排队</button>
+      <button class="btn btn-warning btn-sm" id="force-stop-job-btn">强制停止</button>
       <a class="btn btn-secondary btn-sm" id="download-zip-btn" href="#" style="display:none">下载 ZIP</a>
       <button class="btn btn-secondary btn-sm" id="delete-job-btn" style="color:var(--error)">删除任务</button>
     </div>

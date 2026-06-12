@@ -41,5 +41,15 @@ def run_auto_editor(video_path: Path, cfg: dict[str, Any], out_dir: Path) -> Pat
 
     console.print(f"[cyan]Auto-Editor 粗剪[/cyan] threshold={threshold} min_clip={min_silence}")
     subprocess.run(cmd, check=True)
+    if acfg.get("reencode_quality", False) and out_path.exists():
+        from .ffmpeg_utils import resolve_ffmpeg, run_ffmpeg
+        from .video_quality import ffmpeg_audio_args, ffmpeg_video_args
+        ffmpeg = resolve_ffmpeg(cfg)
+        tmp = out_dir / f"{video_path.stem}_cut_re{video_path.suffix}"
+        vargs = ffmpeg_video_args(cfg)
+        aargs = ffmpeg_audio_args(cfg, copy_audio=True)
+        run_ffmpeg([ffmpeg, "-y", "-i", str(out_path), *vargs, *aargs, str(tmp)], desc="粗剪质量重编码")
+        if tmp.exists():
+            out_path = tmp
     console.print(f"[green]粗剪完成[/green] {out_path}")
     return out_path

@@ -70,8 +70,22 @@ def load_stats() -> dict[str, Any]:
         return dict(_stats)
 
 
-def estimate_cost(stats: dict[str, Any] | None = None) -> dict[str, Any]:
+def estimate_cost(stats: dict[str, Any] | None = None, cfg: dict[str, Any] | None = None) -> dict[str, Any]:
     s = stats or load_stats()
-    total = int(s.get("total_prompt_tokens", 0)) + int(s.get("total_completion_tokens", 0))
-    # 本地 LM Studio 免费；估算按 $0 或用户自定义
-    return {"total_tokens": total, "estimated_usd": 0.0, "note": "本地 LM Studio 通常不计费"}
+    prompt_t = int(s.get("total_prompt_tokens", 0))
+    completion_t = int(s.get("total_completion_tokens", 0))
+    total = prompt_t + completion_t
+    rate = ((cfg or {}).get("lm_studio") or {}).get("cost_per_million_tokens")
+    if rate is not None:
+        usd = round(total / 1_000_000 * float(rate), 4)
+        note = f"按 ${rate}/M tokens 估算"
+    else:
+        usd = 0.0
+        note = "本地 LM Studio 通常不计费；可在 lm_studio.cost_per_million_tokens 设置单价"
+    return {
+        "total_tokens": total,
+        "prompt_tokens": prompt_t,
+        "completion_tokens": completion_t,
+        "estimated_usd": usd,
+        "note": note,
+    }

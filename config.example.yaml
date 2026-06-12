@@ -11,9 +11,12 @@ whisper:
   beam_size: 5           # 解码束宽（越大越准越慢）
   vad_filter: true       # 语音活动检测过滤
   initial_prompt: ""     # 可选前缀提示，如 "这是一段技术讲解视频"
+  hotwords: []           # 专有名词，提升识别率
+  hotwords_from_terminology: true
   chunk_minutes: 15      # 长视频分块转写，每块分钟数
   chunk_if_longer_sec: 1800  # 超过 30 分钟启用分块
   clear_gpu_cache: true      # 转写后释放 GPU 缓存
+  cache_model: true          # v3.8 进程内复用模型
 
 # ──────────────────────────────────────────────
 # 粗剪去静音 (auto-editor)
@@ -64,6 +67,7 @@ terminology:
 # ──────────────────────────────────────────────
 clip_short:
   enabled: true
+  vertical_template: ""        # douyin | xiaohongshu | weixin_channels | bilibili_vertical
   duration_sec: 75
   multi_clip_count: 1          # AI 选段时生成多个竖屏（1-5）
   crop_mode: center            # center | upper | face（需 opencv）
@@ -224,6 +228,10 @@ publish:
     client_secret: ""
   xiaohongshu:
     enabled: false
+  youtube:
+    enabled: false
+    privacy: private
+    category_id: "28"
 
 # ──────────────────────────────────────────────
 # 工作流预设
@@ -246,6 +254,7 @@ lm_studio:
   max_retries: 3                # 最大重试次数
   stream: false                 # 是否流式
   json_retry: true              # JSON 解析失败时自动重试
+  cost_per_million_tokens: 0    # 仪表盘 LM 成本估算（本地可设 0）
   seed: 42                      # 确定性种子（留空随机）
   top_p: 0.9                    # nucleus sampling
   frequency_penalty: 0.0        # 频率惩罚
@@ -422,6 +431,7 @@ web:
   enable_delete: true          # 允许 Web 删除任务
   enable_preview: true         # 允许视频预览
   theme: "dark"                # dark | light
+  use_subprocess_pipeline: true  # v3.8 子进程跑流水线，支持 kill
 
 # ──────────────────────────────────────────────
 # 日志与输出
@@ -446,6 +456,7 @@ video_quality:
   crf: 23                    # 覆盖预设 CRF
   ffmpeg_preset: medium        # x264 preset
   audio_bitrate: 128k
+  encoder: libx264          # libx264 | h264_nvenc（需 NVIDIA 驱动）
 
 whisperx:
   enabled: false             # 字级对齐（pip install whisperx）
@@ -467,3 +478,108 @@ intro_outro:
 sensitive_scan:
   enabled: true
   extra_words: []
+
+# ──────────────────────────────────────────────
+# v3.6 通知 / NVENC / 剪映导出 / 队列 / 安全
+# ──────────────────────────────────────────────
+notifications:
+  enabled: false
+  webhook_url: ""
+  wecom_webhook: ""
+  email:
+    smtp_host: ""
+    smtp_port: 465
+    username: ""
+    password: ""
+    to: []
+  dingtalk_webhook: ""
+  telegram:
+    bot_token: ""
+    chat_id: ""
+
+capcut:
+  enabled: false            # 导出剪映草稿素材包
+
+cover:
+  ai_frame_select: false    # 多帧 AI 选最佳封面
+  frame_count: 5
+
+bgm_beat:
+  enabled: false            # 竖屏切片对齐 BGM 节拍（需 librosa）
+
+rate_limit:
+  enabled: false
+  max_per_minute: 120
+
+pipeline:
+  user_plugins: []          # plugins/example_plugin.py 中的钩子名
+
+publish:
+  bilibili:
+    client_id: ""
+    client_secret: ""
+    redirect_uri: "http://127.0.0.1:8766/api/bilibili/oauth/callback"
+  schedule: []              # 定时发布元数据
+
+account_matrix:
+  accounts: []              # 多账号变体文案
+
+job_backup:
+  enabled: true
+
+# ──────────────────────────────────────────────
+# v3.7 调度 / 热词 / 质检 / RAG / 分布式占位
+# ──────────────────────────────────────────────
+scheduler:
+  enabled: true
+  poll_interval_sec: 60      # 定时发布检查间隔
+
+video_qc:
+  enabled: true
+  min_mean_volume_db: -35
+  max_mean_volume_db: -5
+  max_silence_sec: 3
+
+rag:
+  enabled: false
+  chunk_size: 500
+  use_vectors: true
+  embed_backend: auto
+
+distributed:
+  enabled: false
+  redis_url: ""
+  queue_key: "vpp:jobs"
+
+offline:
+  auto_fallback: true
+  skip_copy_when_offline: true
+  skip_dub_when_offline: true
+
+gpu_budget:
+  release_between_steps: true
+
+publish_preflight:
+  enabled: true
+  require_cover: false
+  max_size_mb: 2048
+
+browser_publish:
+  enabled: false
+  headless: false
+
+platform_extra:
+  enabled: true
+  weixin_channels: { enabled: true }
+  kuaishou: { enabled: true }
+
+i18n_workflow:
+  enabled: false
+  translate_description: true
+
+team:
+  enabled: false
+
+tenant:
+  enabled: false
+  base_dir: output

@@ -31,7 +31,39 @@ from src.ws_hub import broadcast_sync, register, unregister
 from src.config_loader import ROOT, load_config, output_dir, save_config
 from src.dub_ab import run_dub_ab_comparison
 from src.ffmpeg_installer import FFMPEG_ESSENTIALS_URL, ZIP_CACHE, install_ffmpeg, is_ffmpeg_ready
-from src.job_queue import acquire, configure as configure_queue, enqueue, release, status as queue_status
+from src.job_queue import (
+    acquire, cancel_job, configure as configure_queue, enqueue, pause_queue,
+    release, resume_queue, set_priority, status as queue_status,
+)
+from src.audit_log import audit, read_audit
+from src.rate_limit import check_rate_limit
+from src.timing_stats import load_timing_stats
+from src.prompt_templates import list_templates, get_template, save_template, apply_template_to_cfg
+from src.account_matrix import load_accounts, save_accounts
+from src.job_backup import backup_job, restore_job
+from src.publish_schedule import save_schedule, list_pending_schedules, list_all_schedules, cancel_schedule
+from src.publish_scheduler import start_scheduler, run_due_schedules
+from src.timing_aggregate import aggregate_job_timings
+from src.batch_report import build_batch_report, export_batch_report_html
+from src.rag_copy import list_documents, save_document
+from src.config_schema import validate_config
+from src.vertical_templates import list_vertical_templates
+from src.job_cancel import request_cancel, clear_cancel, is_cancel_requested
+from src.video_qc import analyze_video
+from src.job_subprocess import start_pipeline_subprocess, terminate_pipeline, is_running as subprocess_running
+from src.job_compare import compare_jobs
+from src.ab_feedback import load_feedback, record_feedback, suggest_from_feedback
+from src.browser_publish import run_browser_publish
+from src.template_market import list_market_templates, apply_market_template
+from src.dashboard_data import build_dashboard
+from src.team_auth import load_team_tokens, create_token, verify_team_token
+from src.publish_preflight import run_publish_preflight
+from src.rag_embed import build_index as build_rag_index
+from src.redis_queue import start_redis_worker, enqueue_redis
+from src.offline_mode import lm_studio_reachable, apply_offline_fallback
+from src.bilibili_oauth import build_authorize_url, exchange_code, save_tokens, load_tokens, refresh_stored_tokens
+from src.plugins_user import discover_user_plugins
+from src.notifications import notify_job_event
 from src.lm_usage import estimate_cost, load_stats
 from src.pipeline import run_pipeline
 from src.presets import list_presets
@@ -43,7 +75,7 @@ from src.terminology import load_terminology, save_terminology, terminology_path
 
 WEB_DIR = ROOT / "web"
 STATIC_DIR = WEB_DIR / "static"
-APP_VERSION = "3.5.0"
+APP_VERSION = "3.8.0"
 LATEST_VERSION_URL = "https://raw.githubusercontent.com/180024421/video-promo-pipeline/main/VERSION"
 
 ASSETS_DIR = ROOT / "assets"
@@ -58,8 +90,14 @@ _ffmpeg_install: dict[str, Any] = {"status": "idle", "message": "", "progress": 
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: StarletteRequest, call_next):
         cfg = load_config()
-        token = (cfg.get("web") or {}).get("auth_token", "")
         path = request.url.path
+        rl_cfg = cfg.get("rate_limit") or {}
+        if rl_cfg.get("enabled", False) and path.startswith("/api/"):
+            client = request.client.host if request.client else "unknown"
+            ok, msg = check_rate_limit(client, max_per_minute=int(rl_cfg.get("max_per_minute", 120)))
+            if not ok:
+                return JSONResponse({"error": msg}, status_code=429)
+        token = (cfg.get("web") or {}).get("auth_token", "")
         if token and path.startswith("/api/") and path not in ("/api/status", "/api/health", "/api/version"):
             hdr = request.headers.get("X-Auth-Token") or request.headers.get("Authorization", "").removeprefix("Bearer ")
             q = request.query_params.get("token", "")
@@ -69,7 +107,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
             q = request.query_params.get("token", "")
             if q != token:
                 return JSONResponse({"error": "未授权 WebSocket"}, status_code=401)
-        return await call_next(request)
+        response = await call_next(request)
+        if path.startswith("/api/") and request.method != "GET":
+            audit(f"{request.method} {path}", {"status": response.status_code})
+        return response
 
 
 app.add_middleware(AuthMiddleware)
@@ -539,7 +580,7 @@ def api_presets():
     return JSONResponse(list_presets())
 
 
-def _run_job_async(job_name: str, fn) -> int:
+def _run_job_async(job_name: str, fn=None, *, spec: dict[str, Any] | None = None) -> int:
     pos = enqueue(job_name)
     with _jobs_lock:
         _running[job_name] = {"status": "queued", "step": f"排队中 (#{pos})", "progress": 0, "queue_position": pos}
@@ -559,8 +600,10 @@ def _run_job_async(job_name: str, fn) -> int:
         except Exception as e:
             with _jobs_lock:
                 _running[job_name] = {"status": "error", "error": str(e), "step": "排队失败", "progress": 0}
+            clear_cancel(job_name)
             return
 
+        clear_cancel(job_name)
         with _jobs_lock:
             _running[job_name] = {"status": "running", "step": "初始化", "progress": 0}
         try:
@@ -576,17 +619,46 @@ def _run_job_async(job_name: str, fn) -> int:
                     _running[job_name] = state
                 broadcast_sync({"type": "job_progress", **state})
 
-            fn(on_step)
+            cfg = load_config()
+            use_sub = (cfg.get("web") or {}).get("use_subprocess_pipeline", True) and spec is not None
+            if use_sub:
+                from src.job_cancel import check_cancel
+                proc = start_pipeline_subprocess(job_name, spec)
+                try:
+                    while proc.is_alive():
+                        check_cancel(job_name)
+                        prog = load_progress(Path(spec["job_dir"])) if spec.get("job_dir") else {}
+                        on_step(prog.get("current") or "处理中")
+                        proc.join(timeout=1.0)
+                except RuntimeError:
+                    terminate_pipeline(job_name)
+                    raise
+                if proc.exitcode not in (0, None):
+                    if proc.exitcode < 0 or is_cancel_requested(job_name):
+                        raise RuntimeError("任务已取消")
+                    raise RuntimeError(f"子进程退出码 {proc.exitcode}")
+            else:
+                fn(on_step)
             with _jobs_lock:
                 state = {"status": "done", "step": "完成", "progress": 100, "job": job_name}
                 _running[job_name] = state
             broadcast_sync({"type": "job_progress", **state})
         except Exception as e:
             with _jobs_lock:
-                state = {"status": "error", "error": str(e), "step": "失败", "progress": 0, "job": job_name}
+                cancelled = str(e) == "任务已取消"
+                state = {
+                    "status": "error",
+                    "error": str(e),
+                    "step": "已取消" if cancelled else "失败",
+                    "progress": 0,
+                    "job": job_name,
+                }
                 _running[job_name] = state
             broadcast_sync({"type": "job_progress", **state})
+            if not cancelled:
+                notify_job_event("job_error", job_name, {"error": str(e)}, load_config())
         finally:
+            clear_cancel(job_name)
             release(job_name)
 
     threading.Thread(target=_run, daemon=True).start()
@@ -725,21 +797,27 @@ async def upload(
     job_name = f"{dest.stem}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     job_dir = output_dir(_cfg, job_name)
 
+    spec = {
+        "job_name": job_name,
+        "video_path": str(dest),
+        "job_dir": str(job_dir),
+        "skip_cut": bool(skip_cut),
+        "skip_burn": bool(skip_burn),
+        "skip_copy": bool(skip_copy),
+        "skip_dub": bool(skip_dub),
+        "only_transcribe": bool(only_transcribe),
+        "preset": preset or None,
+        "cfg_override": cfg_override or None,
+    }
+
     def _run(on_step):
         run_pipeline(
-            dest,
-            job_dir=job_dir,
-            skip_cut=bool(skip_cut),
-            skip_burn=bool(skip_burn),
-            skip_copy=bool(skip_copy),
-            skip_dub=bool(skip_dub),
-            only_transcribe=bool(only_transcribe),
-            preset=preset or None,
-            cfg_override=cfg_override or None,
-            on_step=on_step,
+            dest, job_dir=job_dir, skip_cut=bool(skip_cut), skip_burn=bool(skip_burn),
+            skip_copy=bool(skip_copy), skip_dub=bool(skip_dub), only_transcribe=bool(only_transcribe),
+            preset=preset or None, cfg_override=cfg_override or None, on_step=on_step,
         )
 
-    pos = _run_job_async(job_name, _run)
+    pos = _run_job_async(job_name, _run, spec=spec)
     return JSONResponse({"ok": True, "job": job_name, "job_dir": str(job_dir), "warnings": warnings, "queue_position": pos})
 
 
@@ -922,6 +1000,354 @@ def api_queue():
     return JSONResponse(queue_status())
 
 
+@app.post("/api/queue/pause")
+def api_queue_pause():
+    pause_queue()
+    return JSONResponse({"ok": True})
+
+
+@app.post("/api/queue/resume")
+def api_queue_resume():
+    resume_queue()
+    return JSONResponse({"ok": True})
+
+
+@app.post("/api/queue/cancel/{job_name}")
+def api_queue_cancel(job_name: str):
+    cancel_job(job_name)
+    request_cancel(job_name)
+    return JSONResponse({"ok": True})
+
+
+@app.post("/api/queue/force-stop/{job_name}")
+def api_force_stop(job_name: str):
+    cancel_job(job_name)
+    request_cancel(job_name)
+    terminate_pipeline(job_name)
+    with _jobs_lock:
+        if job_name in _running:
+            _running[job_name] = {"status": "error", "error": "已强制停止", "step": "已取消", "progress": 0}
+    return JSONResponse({"ok": True})
+
+
+@app.post("/api/queue/priority/{job_name}")
+async def api_queue_priority(job_name: str, request: Request):
+    body = await request.json()
+    set_priority(job_name, int(body.get("priority", 0)))
+    return JSONResponse({"ok": True})
+
+
+@app.get("/api/jobs/{job_name}/timing")
+def api_job_timing(job_name: str):
+    job_dir = _safe_job_path(job_name)
+    if not job_dir:
+        return JSONResponse({"error": "任务不存在"}, status_code=404)
+    return JSONResponse(load_timing_stats(job_dir) or {})
+
+
+@app.get("/api/prompt-templates")
+def api_list_prompt_templates():
+    return JSONResponse(list_templates())
+
+
+@app.get("/api/prompt-templates/{tid}")
+def api_get_prompt_template(tid: str):
+    t = get_template(tid)
+    if not t:
+        return JSONResponse({"error": "不存在"}, status_code=404)
+    return JSONResponse(t)
+
+
+@app.post("/api/prompt-templates/{tid}")
+async def api_save_prompt_template(tid: str, request: Request):
+    body = await request.json()
+    p = save_template(tid, body)
+    return JSONResponse({"ok": True, "path": str(p)})
+
+
+@app.get("/api/accounts")
+def api_accounts():
+    return JSONResponse(load_accounts())
+
+
+@app.post("/api/accounts")
+async def api_save_accounts(request: Request):
+    body = await request.json()
+    p = save_accounts(body.get("accounts") or body)
+    return JSONResponse({"ok": True, "path": str(p)})
+
+
+@app.get("/api/audit")
+def api_audit():
+    return JSONResponse(read_audit(300))
+
+
+@app.get("/api/bilibili/oauth/url")
+def api_bili_oauth_url():
+    cfg = load_config()
+    pcfg = (cfg.get("publish") or {}).get("bilibili") or {}
+    redirect = pcfg.get("redirect_uri", "http://127.0.0.1:8766/api/bilibili/oauth/callback")
+    url = build_authorize_url(pcfg.get("client_id", ""), redirect)
+    tokens = load_tokens()
+    return JSONResponse({
+        "url": url,
+        "authorized": bool(tokens.get("access_token") or tokens.get("refresh_token")),
+    })
+
+
+@app.get("/api/bilibili/oauth/callback")
+def api_bili_oauth_callback(code: str = "", state: str = ""):
+    cfg = load_config()
+    pcfg = (cfg.get("publish") or {}).get("bilibili") or {}
+    redirect = pcfg.get("redirect_uri", "http://127.0.0.1:8766/api/bilibili/oauth/callback")
+    if not code:
+        return JSONResponse({"error": "missing code"}, status_code=400)
+    data = exchange_code(pcfg.get("client_id", ""), pcfg.get("client_secret", ""), code, redirect)
+    save_tokens(data)
+    return JSONResponse({"ok": True, "message": "授权成功，token 已保存"})
+
+
+@app.post("/api/jobs/{job_name}/schedule")
+async def api_schedule_publish(job_name: str, request: Request):
+    job_dir = _safe_job_path(job_name)
+    if not job_dir:
+        return JSONResponse({"error": "任务不存在"}, status_code=404)
+    body = await request.json()
+    entry = save_schedule(job_dir, body.get("platform", "bilibili"), body.get("publish_at", ""), load_config())
+    return JSONResponse({"ok": True, "entry": entry})
+
+
+@app.get("/api/schedules/pending")
+def api_pending_schedules():
+    return JSONResponse(list_pending_schedules(_output_base()))
+
+
+@app.get("/api/schedules/all")
+def api_all_schedules():
+    return JSONResponse(list_all_schedules(_output_base()))
+
+
+@app.post("/api/schedules/cancel")
+async def api_cancel_schedule(request: Request):
+    body = await request.json()
+    job_dir = _safe_job_path(body.get("job_name", ""))
+    if not job_dir:
+        return JSONResponse({"error": "任务不存在"}, status_code=404)
+    ok = cancel_schedule(job_dir, body.get("platform", ""), body.get("publish_at", ""))
+    return JSONResponse({"ok": ok})
+
+
+@app.post("/api/schedules/run-now")
+def api_run_schedules_now():
+    results = run_due_schedules(_output_base(), load_config())
+    return JSONResponse({"ok": True, "results": results})
+
+
+@app.get("/api/analytics/timing")
+def api_analytics_timing():
+    return JSONResponse(aggregate_job_timings(_output_base()))
+
+
+@app.get("/api/analytics/lm-cost")
+def api_analytics_lm_cost():
+    stats = load_stats()
+    cost = estimate_cost(stats, load_config())
+    return JSONResponse({**stats, **cost})
+
+
+@app.get("/api/jobs/{job_name}/qc")
+def api_job_qc(job_name: str):
+    job_dir = _safe_job_path(job_name)
+    if not job_dir:
+        return JSONResponse({"error": "任务不存在"}, status_code=404)
+    qc_path = job_dir / "qc_report.json"
+    if qc_path.exists():
+        return JSONResponse(json.loads(qc_path.read_text(encoding="utf-8")))
+    summary = job_dir / "summary.json"
+    if summary.exists():
+        s = json.loads(summary.read_text(encoding="utf-8"))
+        vid = s.get("final_video") or s.get("short_video")
+        if vid and Path(vid).exists():
+            return JSONResponse(analyze_video(Path(vid), load_config(), job_dir))
+    return JSONResponse({"error": "无可质检视频"}, status_code=404)
+
+
+@app.post("/api/jobs/restore")
+async def api_restore_job(file: UploadFile = File(...)):
+    import tempfile
+    cfg = load_config()
+    out_base = _output_base()
+    out_base.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+        content = await file.read()
+        tmp.write(content)
+        tmp_path = Path(tmp.name)
+    try:
+        restored = restore_job(tmp_path, out_base)
+        return JSONResponse({"ok": True, "job": restored.name, "path": str(restored)})
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
+@app.get("/api/batch/report")
+def api_batch_report():
+    cfg = load_config()
+    watch = ROOT / (cfg.get("batch") or {}).get("watch_dir", "watch_in")
+    return JSONResponse(build_batch_report(_output_base(), watch))
+
+
+@app.get("/api/batch/report.html")
+def api_batch_report_html():
+    cfg = load_config()
+    watch = ROOT / (cfg.get("batch") or {}).get("watch_dir", "watch_in")
+    report = build_batch_report(_output_base(), watch)
+    dest = ROOT / "logs" / "batch_report.html"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    export_batch_report_html(report, dest)
+    return FileResponse(dest, media_type="text/html")
+
+
+@app.get("/api/knowledge")
+def api_knowledge_list():
+    return JSONResponse(list_documents())
+
+
+@app.post("/api/knowledge")
+async def api_knowledge_save(request: Request):
+    body = await request.json()
+    name = body.get("name", "doc.md")
+    content = body.get("content", "")
+    p = save_document(name, content)
+    return JSONResponse({"ok": True, "path": str(p)})
+
+
+@app.get("/api/config/validate")
+def api_config_validate():
+    issues = validate_config(load_config())
+    return JSONResponse({"ok": len(issues) == 0, "issues": issues})
+
+
+@app.get("/api/vertical-templates")
+def api_vertical_templates():
+    return JSONResponse(list_vertical_templates())
+
+
+@app.delete("/api/prompt-templates/{tid}")
+def api_delete_prompt_template(tid: str):
+    from src.prompt_templates import TEMPLATES_DIR
+    path = TEMPLATES_DIR / f"{tid}.json"
+    if path.exists():
+        path.unlink()
+        return JSONResponse({"ok": True})
+    return JSONResponse({"error": "不存在"}, status_code=404)
+
+
+@app.post("/api/jobs/{job_name}/backup")
+def api_backup_job(job_name: str):
+    job_dir = _safe_job_path(job_name)
+    if not job_dir:
+        return JSONResponse({"error": "任务不存在"}, status_code=404)
+    z = backup_job(job_dir)
+    return FileResponse(z, media_type="application/zip", filename=z.name)
+
+
+@app.get("/api/plugins/user")
+def api_user_plugins():
+    return JSONResponse(discover_user_plugins())
+
+
+@app.get("/api/dashboard")
+def api_dashboard():
+    return JSONResponse(build_dashboard(_output_base()))
+
+
+@app.get("/api/template-market")
+def api_template_market():
+    return JSONResponse(list_market_templates())
+
+
+@app.post("/api/template-market/{tid}/apply")
+def api_apply_market_template(tid: str):
+    cfg = apply_market_template(load_config(), tid)
+    save_config(cfg)
+    _reload_cfg()
+    return JSONResponse({"ok": True, "template": tid})
+
+
+@app.get("/api/jobs/compare")
+def api_compare_jobs(job_a: str, job_b: str):
+    da, db = _safe_job_path(job_a), _safe_job_path(job_b)
+    if not da or not db:
+        return JSONResponse({"error": "任务不存在"}, status_code=404)
+    return JSONResponse(compare_jobs(da, db))
+
+
+@app.get("/api/ab-feedback")
+def api_ab_feedback():
+    return JSONResponse({"items": load_feedback(), "suggest": suggest_from_feedback()})
+
+
+@app.post("/api/ab-feedback")
+async def api_ab_feedback_save(request: Request):
+    body = await request.json()
+    row = record_feedback(body)
+    return JSONResponse({"ok": True, "entry": row})
+
+
+@app.post("/api/jobs/{job_name}/browser-publish/{platform}")
+def api_browser_publish(job_name: str, platform: str):
+    job_dir = _safe_job_path(job_name)
+    if not job_dir:
+        return JSONResponse({"error": "任务不存在"}, status_code=404)
+    return JSONResponse(run_browser_publish(job_dir, platform, load_config()))
+
+
+@app.get("/api/jobs/{job_name}/preflight")
+def api_job_preflight(job_name: str):
+    job_dir = _safe_job_path(job_name)
+    if not job_dir:
+        return JSONResponse({"error": "任务不存在"}, status_code=404)
+    return JSONResponse(run_publish_preflight(job_dir, load_config()))
+
+
+@app.post("/api/rag/reindex")
+def api_rag_reindex():
+    n = build_rag_index(load_config())
+    return JSONResponse({"ok": True, "chunks": n})
+
+
+@app.get("/api/team/tokens")
+def api_team_tokens():
+    return JSONResponse(load_team_tokens())
+
+
+@app.post("/api/team/tokens")
+async def api_team_create_token(request: Request):
+    body = await request.json()
+    entry = create_token(body.get("name", "user"), body.get("role", "editor"))
+    return JSONResponse({"ok": True, "entry": entry})
+
+
+@app.get("/api/offline/status")
+def api_offline_status():
+    cfg = load_config()
+    return JSONResponse({"lm_studio": lm_studio_reachable(cfg), "offline_cfg": apply_offline_fallback(cfg).get("pipeline", {})})
+
+
+@app.put("/api/jobs/{job_name}/chapters")
+async def api_save_chapters(job_name: str, request: Request):
+    job_dir = _safe_job_path(job_name)
+    if not job_dir:
+        return JSONResponse({"error": "任务不存在"}, status_code=404)
+    body = await request.json()
+    chapters = body.get("chapters") or []
+    (job_dir / "chapters.json").write_text(json.dumps(chapters, ensure_ascii=False, indent=2), encoding="utf-8")
+    lines = [f"{c.get('time', '00:00')} {c.get('title', '')}" for c in chapters]
+    (job_dir / "chapters_bilibili.txt").write_text("\n".join(lines), encoding="utf-8")
+    (job_dir / "chapters_youtube.txt").write_text("\n".join(lines), encoding="utf-8")
+    return JSONResponse({"ok": True})
+
+
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
@@ -931,6 +1357,28 @@ def main() -> None:
 
     wcfg = _cfg.get("web") or {}
     configure_queue(int(wcfg.get("max_concurrent_jobs", 1)))
+    scfg = _cfg.get("scheduler") or {}
+    if scfg.get("enabled", True):
+        interval = int(scfg.get("poll_interval_sec", 60))
+        start_scheduler(_output_base(), interval)
+
+    def _redis_handler(spec: dict[str, Any]) -> None:
+        run_pipeline(
+            Path(spec.get("video_path") or spec["job_dir"]),
+            job_dir=Path(spec["job_dir"]) if spec.get("job_dir") else None,
+            skip_cut=spec.get("skip_cut", False),
+            skip_burn=spec.get("skip_burn", False),
+            skip_copy=spec.get("skip_copy", False),
+            skip_dub=spec.get("skip_dub", False),
+            only_transcribe=spec.get("only_transcribe", False),
+            preset=spec.get("preset"),
+            cfg_override=spec.get("cfg_override"),
+        )
+
+    start_redis_worker(_redis_handler, _cfg)
+
+    import multiprocessing
+    multiprocessing.freeze_support()
     host = wcfg.get("host", "127.0.0.1")
     port = int(wcfg.get("port", 8766))
     uvicorn.run("web_app:app", host=host, port=port, reload=False)

@@ -42,3 +42,8 @@ def run_plugins(hook: str, ctx: dict[str, Any], cfg: dict[str, Any]) -> None:
         if fn:
             console.print(f"[cyan]插件[/cyan] {hook} ← {spec}")
             fn(ctx, cfg)
+    try:
+        from .plugins_user import run_user_plugins
+        run_user_plugins(hook, ctx, cfg)
+    except Exception:
+        pass

@@ -12,6 +12,7 @@ from rich.console import Console
 from .config_loader import ROOT
 from .chapters import build_chapters_from_segments
 from .copy_enhance import post_process_copy
+from .rag_embed import retrieve_context_vector
 
 console = Console()
 
@@ -373,11 +374,14 @@ def generate_copy(
     system_prompt = (cfg.get("lm_studio") or {}).get("system_prompt", "") or system_prompt
 
     hooks = _build_hooks(client, transcript, cfg, system_prompt)
+    rag_ctx = retrieve_context_vector(transcript, cfg)
 
     all_data: dict[str, Any] = {}
     for platform in enabled:
         console.print(f"[cyan]生成 {platform} 文案...[/cyan]")
         prompt = _build_platform_prompt(cfg, platform, transcript, chapter_outline)
+        if rag_ctx:
+            prompt = f"参考知识库（请融入文案，勿照抄）：\n{rag_ctx}\n\n{prompt}"
         try:
             content = _call_lm(client, prompt, cfg, system_prompt)
             data = _parse_json_content(content)

@@ -13,6 +13,7 @@ from .ffmpeg_utils import probe_duration, resolve_ffmpeg
 from .subtitle_ass import export_subtitle_formats
 from .subtitle_post import post_process_segments
 from .terminology import apply_replacements, apply_to_segments, load_terminology
+from .whisper_prompt import build_whisper_initial_prompt
 
 console = Console()
 
@@ -85,12 +86,15 @@ def _transcribe_whisper(model: Any, audio_path: Path, cfg: dict[str, Any]) -> tu
     language = wcfg.get("language", "zh")
     beam_size = int(wcfg.get("beam_size", 5))
     vad_filter = bool(wcfg.get("vad_filter", True))
-    segments_iter, info = model.transcribe(
-        str(audio_path),
-        language=language,
-        vad_filter=vad_filter,
-        beam_size=beam_size,
-    )
+    initial_prompt = build_whisper_initial_prompt(cfg)
+    kw: dict[str, Any] = {
+        "language": language,
+        "vad_filter": vad_filter,
+        "beam_size": beam_size,
+    }
+    if initial_prompt:
+        kw["initial_prompt"] = initial_prompt
+    segments_iter, info = model.transcribe(str(audio_path), **kw)
     segments: list[dict[str, Any]] = []
     for seg in segments_iter:
         segments.append({"start": seg.start, "end": seg.end, "text": seg.text.strip()})
@@ -108,8 +112,13 @@ def transcribe_video(video_path: Path, cfg: dict[str, Any], out_dir: Path) -> di
     chunk_minutes = float(wcfg.get("chunk_minutes", 15))
     chunk_sec = chunk_minutes * 60
 
+    from .whisper_cache import get_whisper_model
+
     console.print(f"[cyan]Whisper 转写[/cyan] model={model_size} device={device}")
-    model = WhisperModel(model_size, device=device, compute_type=compute_type)
+    wcache = wcfg.get("cache_model", True)
+    model = get_whisper_model(model_size, device, compute_type) if wcache else WhisperModel(
+        model_size, device=device, compute_type=compute_type
+    )
 
     duration = probe_duration(cfg, video_path)
     use_chunks = duration > chunk_if_longer and chunk_sec > 0

@@ -28,7 +28,194 @@ $$('.nav-item').forEach(el => {
     if (page === 'copy') loadCopyConfig();
     if (page === 'terminology') loadTerminology();
     if (page === 'assets') loadAssets();
+    if (page === 'tools') loadTools();
+    if (page === 'analytics') loadDashboard();
   });
+});
+
+function applyTheme(light) {
+  document.body.classList.toggle('theme-light', light);
+  localStorage.setItem('theme', light ? 'light' : 'dark');
+  const btn = $('#theme-toggle');
+  if (btn) btn.textContent = light ? '切换深色主题' : '切换浅色主题';
+}
+if (localStorage.getItem('theme') === 'light') applyTheme(true);
+$('#theme-toggle')?.addEventListener('click', () => applyTheme(!document.body.classList.contains('theme-light')));
+
+async function loadQueuePanel() {
+  try {
+    const r = await fetch('/api/queue');
+    const q = await r.json();
+    const el = $('#queue-status');
+    if (!el) return;
+    el.innerHTML = `并发 ${q.active_count || 0}/${q.max_concurrent || 1} · 排队 ${q.pending_count || 0} 个` +
+      (q.paused ? ' · <strong style="color:var(--warning)">已暂停</strong>' : '') +
+      (q.pending?.length ? `<br><small>${q.pending.join(', ')}</small>` : '');
+  } catch (_) {}
+}
+
+$('#btn-queue-pause')?.addEventListener('click', async () => {
+  await fetch('/api/queue/pause', { method: 'POST' });
+  toast('队列已暂停');
+  loadQueuePanel();
+});
+$('#btn-queue-resume')?.addEventListener('click', async () => {
+  await fetch('/api/queue/resume', { method: 'POST' });
+  toast('队列已恢复');
+  loadQueuePanel();
+});
+
+async function loadTimingAnalytics() {
+  try {
+    const [tr, lr] = await Promise.all([fetch('/api/analytics/timing'), fetch('/api/analytics/lm-cost')]);
+    const t = await tr.json();
+    const lm = await lr.json();
+    const el = $('#timing-analytics');
+    if (el && t.step_averages) {
+      const rows = Object.entries(t.step_averages).map(([k, v]) => `${k}: ${v}s`).join(' · ');
+      el.innerHTML = `已分析 ${t.job_count || 0} 个任务` +
+        (t.bottleneck ? ` · 瓶颈 <strong>${escHtml(t.bottleneck)}</strong>` : '') +
+        (rows ? `<br><small>${escHtml(rows)}</small>` : '');
+    }
+    if ($('#lm-cost-hint')) {
+      $('#lm-cost-hint').textContent = `LM ${lm.total_calls || 0} 次 · ${lm.total_tokens || 0} tokens · ${lm.note || ''}`;
+    }
+  } catch (_) {}
+}
+
+async function loadTools() {
+  try {
+    const tr = await fetch('/api/prompt-templates');
+    const tpls = await tr.json();
+    const el = $('#prompt-templates-list');
+    if (el) {
+      el.innerHTML = tpls.length
+        ? tpls.map(t => `<div class="file-tag" style="display:block;margin:6px 0">${escHtml(t.name || t.id)} <small>(${t.platform || '-'})</small> — <code>${t.id}</code></div>`).join('')
+        : '<div class="empty">暂无模板</div>';
+    }
+    const ar = await fetch('/api/audit');
+    const logs = await ar.json();
+    const box = $('#audit-log-box');
+    if (box) {
+      const lines = Array.isArray(logs) ? logs : (logs.entries || []);
+      box.textContent = lines.map(e => typeof e === 'string' ? e : JSON.stringify(e)).join('\n') || '暂无记录';
+    }
+    const oauth = await fetch('/api/bilibili/oauth/url').then(r => r.json()).catch(() => ({}));
+    $('#bili-oauth-status').textContent = oauth.authorized ? '已授权' : (oauth.error || '未授权');
+    window._biliOAuthUrl = oauth.url;
+    const sched = await fetch('/api/schedules/all').then(r => r.json());
+    $('#schedule-calendar').innerHTML = sched.length
+      ? sched.map(s => `<div class="file-tag" style="display:block;margin:4px 0">${escHtml(s.job_name)} · ${s.platform} @ ${s.publish_at}
+        <button class="btn btn-sm btn-secondary" data-cancel-schedule="${escAttr(s.job_name)}" data-platform="${escAttr(s.platform)}" data-at="${escAttr(s.publish_at)}">取消</button></div>`).join('')
+      : '<div class="empty">暂无定时发布</div>';
+    $$('[data-cancel-schedule]').forEach(btn => {
+      btn.onclick = async () => {
+        await fetch('/api/schedules/cancel', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ job_name: btn.dataset.cancelSchedule, platform: btn.dataset.platform, publish_at: btn.dataset.at }) });
+        toast('已取消'); loadTools();
+      };
+    });
+    const acc = await fetch('/api/accounts').then(r => r.json());
+    if ($('#accounts-json')) $('#accounts-json').value = JSON.stringify(acc.accounts || acc || [], null, 2);
+    const kl = await fetch('/api/knowledge').then(r => r.json());
+    $('#knowledge-list').innerHTML = kl.length ? kl.map(k => `<code>${k.name}</code> `).join('') : '暂无文档';
+    const cv = await fetch('/api/config/validate').then(r => r.json());
+    $('#config-validate-hint').textContent = cv.ok ? '配置校验通过' : (cv.issues || []).join('; ');
+    const mkt = await fetch('/api/template-market').then(r => r.json());
+    $('#template-market-list').innerHTML = mkt.map(t =>
+      `<div style="margin:6px 0">${escHtml(t.name)} <button class="btn btn-sm btn-secondary" data-tpl="${t.id}">应用</button></div>`
+    ).join('');
+    $$('[data-tpl]').forEach(btn => { btn.onclick = async () => {
+      const r = await fetch(`/api/template-market/${btn.dataset.tpl}/apply`, { method: 'POST' });
+      const j = await r.json();
+      toast(j.ok ? '已应用模板' : '失败', j.ok);
+    }; });
+    const ab = await fetch('/api/ab-feedback').then(r => r.json());
+    $('#ab-suggest').textContent = ab.suggest?.best_title ? `最佳标题: ${ab.suggest.best_title} (样本 ${ab.suggest.sample_count})` : (ab.suggest?.note || '');
+    const cfg = await fetch('/api/config').then(r => r.json());
+    if ($('#hotwords-input') && cfg.whisper?.hotwords) $('#hotwords-input').value = (cfg.whisper.hotwords || []).join(', ');
+  } catch (e) {
+    toast('工具页加载失败', false);
+  }
+}
+
+$('#btn-save-template')?.addEventListener('click', async () => {
+  const id = $('#tpl-id')?.value?.trim();
+  if (!id) return toast('请填写模板 ID', false);
+  let body = {};
+  try { body = JSON.parse($('#tpl-json')?.value || '{}'); } catch { return toast('JSON 无效', false); }
+  if ($('#tpl-name')?.value) body.name = $('#tpl-name').value;
+  const r = await fetch(`/api/prompt-templates/${encodeURIComponent(id)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const d = await r.json();
+  toast(d.ok ? '模板已保存' : (d.error || '失败'), d.ok);
+  loadTools();
+});
+
+$('#btn-save-accounts')?.addEventListener('click', async () => {
+  let accounts = [];
+  try { accounts = JSON.parse($('#accounts-json')?.value || '[]'); } catch { return toast('JSON 无效', false); }
+  const r = await fetch('/api/accounts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ accounts }) });
+  const d = await r.json();
+  toast(d.ok ? '账号已保存' : (d.error || '失败'), d.ok);
+});
+
+$('#btn-run-schedules')?.addEventListener('click', async () => {
+  const r = await fetch('/api/schedules/run-now', { method: 'POST' });
+  const d = await r.json();
+  toast(d.ok ? `执行 ${(d.results || []).length} 项` : '失败', d.ok);
+  loadTools();
+});
+
+$('#btn-restore-job')?.addEventListener('click', async () => {
+  const f = $('#restore-zip')?.files?.[0];
+  if (!f) return toast('请选择 ZIP', false);
+  const fd = new FormData();
+  fd.append('file', f);
+  const r = await fetch('/api/jobs/restore', { method: 'POST', body: fd });
+  const d = await r.json();
+  toast(d.ok ? `已恢复: ${d.job}` : (d.error || '失败'), d.ok);
+  if (d.ok) loadJobs();
+});
+
+async function loadDashboard() {
+  const r = await fetch('/api/dashboard');
+  const d = await r.json();
+  $('#dashboard-stats').textContent = `任务 ${d.stats?.total || 0} · 完成 ${d.stats?.done || 0} · 定时 ${d.stats?.scheduled || 0}`;
+  $('#dashboard-schedules').innerHTML = (d.schedules || []).map(s =>
+    `<div class="file-tag" style="display:block;margin:4px 0">${escHtml(s.job_name)} · ${s.platform} @ ${s.publish_at}</div>`
+  ).join('') || '<div class="empty">无</div>';
+  $('#dashboard-jobs').innerHTML = (d.jobs || []).slice(0, 30).map(j =>
+    `<div style="margin:6px 0"><strong>${escHtml(j.name)}</strong> <small>${j.status}</small> ${Object.entries(j.links||{}).map(([k,v])=>`<a href="${v}" target="_blank">${k}</a>`).join(' ')}</div>`
+  ).join('') || '<div class="empty">无</div>';
+}
+
+$('#btn-save-hotwords')?.addEventListener('click', async () => {
+  const hw = ($('#hotwords-input')?.value || '').split(',').map(s => s.trim()).filter(Boolean);
+  const r = await fetch('/api/config');
+  const cfg = await r.json();
+  cfg.whisper = cfg.whisper || {};
+  cfg.whisper.hotwords = hw;
+  await fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cfg) });
+  toast('热词已保存');
+});
+
+$('#btn-save-ab')?.addEventListener('click', async () => {
+  await fetch('/api/ab-feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ platform: 'bilibili', title: $('#ab-title')?.value, views: Number($('#ab-views')?.value), ctr: Number($('#ab-ctr')?.value) }) });
+  toast('已录入'); loadTools();
+});
+
+$('#btn-save-knowledge')?.addEventListener('click', async () => {
+  const r = await fetch('/api/knowledge', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: $('#knowledge-name')?.value, content: $('#knowledge-content')?.value }) });
+  const d = await r.json();
+  toast(d.ok ? '已保存' : (d.error || '失败'), d.ok);
+  loadTools();
+});
+
+$('#btn-bili-oauth')?.addEventListener('click', () => {
+  if (window._biliOAuthUrl) window.open(window._biliOAuthUrl, '_blank');
+  else toast('请先在 config 配置 B 站 OAuth', false);
 });
 
 function toast(msg, ok = true) {
@@ -238,6 +425,8 @@ async function loadStatus() {
       stopFfmpegPoll();
     }
     loadSetupWizard();
+    loadQueuePanel();
+    loadTimingAnalytics();
   } catch (e) {
     toast('状态加载失败', false);
   }
@@ -499,6 +688,15 @@ async function openJobDetail(name) {
   }).join('') || '<div class="empty">暂无文件</div>';
 
   const shortVids = (d.files || []).filter(f => f.name.includes('_short_') && f.type === 'video');
+  const coverImgs = (d.files || []).filter(f => f.type === 'image' && /cover/i.test(f.name));
+  if (coverImgs.length > 1) {
+    filesEl.innerHTML += '<div class="card" style="margin-top:1rem"><h4>封面 A/B 对比</h4><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px">' +
+      coverImgs.map(f => {
+        const url = `/api/jobs/${encodeURIComponent(name)}/files/${encodeURIComponent(f.name)}`;
+        return `<div><strong>${f.name}</strong><br><img class="preview-img" src="${url}" style="width:100%"></div>`;
+      }).join('') + '</div></div>';
+  }
+
   if (shortVids.length > 1) {
     filesEl.innerHTML += '<div class="card" style="margin-top:1rem"><h4>竖屏多段对比</h4><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px">' +
       shortVids.map(f => {
@@ -553,6 +751,20 @@ async function openJobDetail(name) {
   }
 
   $('#tab-steps').innerHTML = renderStepTimeline(d.pipeline_progress);
+  fetch(`/api/jobs/${encodeURIComponent(name)}/timing`).then(r => r.json()).then(t => {
+    const steps = t?.step_seconds || t?.steps;
+    if (!steps) return;
+    const rows = Object.entries(steps).filter(([k]) => !k.startsWith('__')).map(([k, v]) => `<tr><td>${escHtml(k)}</td><td>${Number(v).toFixed(1)}s</td></tr>`).join('');
+    $('#tab-steps').innerHTML += `<div class="card" style="margin-top:1rem"><h4>步骤耗时</h4>
+      <table class="seg-table"><tbody>${rows}</tbody></table>
+      <p class="hint-text">总计 ${Number(t.total_seconds || steps.__total__ || 0).toFixed(1)}s</p></div>`;
+  }).catch(() => {});
+  fetch(`/api/jobs/${encodeURIComponent(name)}/qc`).then(r => r.json()).then(q => {
+    if (q.error || q.skipped) return;
+    $('#tab-steps').innerHTML += `<div class="card" style="margin-top:1rem"><h4>成片质检</h4>
+      <p class="hint-text">${q.ok ? '通过' : '有问题'} · 音量 ${q.mean_volume_db ?? '-'} dB</p>
+      ${(q.issues || []).concat(q.warnings || []).map(x => `<div>${escHtml(x)}</div>`).join('')}</div>`;
+  }).catch(() => {});
 
   const segData = d.segments;
   const segEl = $('#tab-segments');
@@ -643,6 +855,28 @@ async function openJobDetail(name) {
     const r = await fetch(`/api/jobs/${encodeURIComponent(name)}/dub-ab`, { method: 'POST' });
     const j = await r.json();
     toast(j.ok ? '正在生成 AB 双音色' : (j.error || '失败'), j.ok);
+  };
+
+  $('#backup-job-btn').onclick = async () => {
+    const r = await fetch(`/api/jobs/${encodeURIComponent(name)}/backup`, { method: 'POST' });
+    const j = await r.json();
+    if (j.ok && j.path) toast(`备份已创建: ${j.path}`);
+    else toast(j.error || '备份失败', false);
+  };
+
+  $('#cancel-queue-job-btn').onclick = async () => {
+    const r = await fetch(`/api/queue/cancel/${encodeURIComponent(name)}`, { method: 'POST' });
+    const j = await r.json();
+    toast(j.ok ? '已取消排队' : (j.error || '无法取消'), j.ok);
+    loadJobs();
+  };
+
+  $('#force-stop-job-btn').onclick = async () => {
+    if (!confirm('强制停止将中断当前 GPU 任务，确定？')) return;
+    const r = await fetch(`/api/queue/force-stop/${encodeURIComponent(name)}`, { method: 'POST' });
+    const j = await r.json();
+    toast(j.ok ? '已发送停止信号' : (j.error || '失败'), j.ok);
+    loadJobs();
   };
 
   $('#delete-job-btn').onclick = async () => {

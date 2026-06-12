@@ -14,6 +14,23 @@
   --sidebar-w: 220px;
 }
 
+body.theme-light {
+  --bg: #f4f5f7;
+  --bg-card: #ffffff;
+  --bg-hover: #eef0f4;
+  --border: #d8dce6;
+  --text: #1a1d27;
+  --text-muted: #5c6370;
+}
+
+@media (max-width: 768px) {
+  .sidebar { width: 56px; }
+  .sidebar .nav-item span:last-child { display: none; }
+  .main { margin-left: 56px !important; padding: 1rem !important; }
+  .form-grid { grid-template-columns: 1fr !important; }
+  .detail-panel { width: 100% !important; max-width: 100% !important; }
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {

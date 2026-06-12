@@ -15,6 +15,23 @@ from .config_loader import load_config, output_dir
 from .copywriter import generate_copy
 from .cover import generate_cover
 from .cover_ab import generate_cover_variants
+from .cover_select import select_best_cover
+from .capcut_export import export_capcut_pack
+from .chapter_export import export_chapter_markers
+from .job_cancel import check_cancel, clear_cancel
+from .platform_semi_auto import build_semi_auto_pack
+from .vertical_templates import apply_vertical_template
+from .video_qc import analyze_video
+from .offline_mode import apply_offline_fallback
+from .gpu_budget import release_gpu_if_needed
+from .publish_preflight import run_publish_preflight
+from .youtube_publish import build_youtube_manifest
+from .platform_extra import build_extra_platform_pack
+from .i18n_workflow import export_english_pack
+from .account_matrix import apply_account_variant, load_accounts
+from .notifications import notify_job_event
+from .terminology_suggest import suggest_terminology
+from .timing_stats import StepTimer, load_timing_stats
 from .dubbing import run_dubbing
 from .export_pack import pack_job_zip
 from .gpu_scheduler import after_whisper, run_lm_step
@@ -119,7 +136,7 @@ def run_pipeline(
     cfg_override: dict[str, Any] | None = None,
     on_step: StepCallback = None,
 ) -> dict[str, Any]:
-    cfg = _resolve_cfg(config_path, preset, cfg_override)
+    cfg = apply_offline_fallback(apply_vertical_template(_resolve_cfg(config_path, preset, cfg_override)))
     pcfg = cfg.get("pipeline") or {}
     if from_step:
         only_flags = resolve_only_flags(from_step)
@@ -169,12 +186,20 @@ def run_pipeline(
         out_dir = output_dir(cfg, f"{video_path.stem}_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
 
     tracker = ProgressTracker(out_dir, on_step)
+    timer = StepTimer(out_dir)
     jlog = get_job_logger(out_dir, out_dir.name)
     log_job(out_dir, f"开始流水线 from_step={from_step or 'full'}")
+    _last_step = [""]
 
     def _tick(name: str) -> None:
+        check_cancel(out_dir.name)
+        if _last_step[0]:
+            timer.end(_last_step[0])
+        _last_step[0] = name
+        timer.start(name)
         _step(None, name, tracker)
         log_job(out_dir, name)
+        release_gpu_if_needed(cfg, name)
 
     raw_copy = out_dir / video_path.name
     if not raw_copy.exists() or force:
@@ -245,10 +270,15 @@ def run_pipeline(
                 raise RuntimeError(f"无法从步骤 {from_step} 继续：缺少转写结果")
 
     assert tx is not None
+    suggest_terminology(tx.get("transcript", ""), cfg, out_dir)
+    if tx.get("segments"):
+        export_chapter_markers(tx["segments"], cfg, out_dir)
 
     if only_transcribe:
         tracker.done()
-        return _write_summary(out_dir, raw_copy, work_video, work_video, tx, None, None, on_step=on_step, tracker=tracker)
+        timer.end(_last_step[0])
+        timing = timer.finish()
+        return _write_summary(out_dir, raw_copy, work_video, work_video, tx, None, None, on_step=on_step, tracker=tracker, timing=timing)
 
     # --- 智能剪辑 ---
     smart_cfg = cfg.get("smart_cut") or {}
@@ -384,6 +414,11 @@ def run_pipeline(
                 source_video=cover_src,
             )
             cover_path = cover_paths[0] if cover_paths else None
+        elif ccfg.get("ai_frame_select", False):
+            cover_path = select_best_cover(
+                video_path.stem, cfg, out_dir, cover_src,
+                copy_data if isinstance(copy_data, dict) else None,
+            )
         else:
             cover_path = generate_cover(
                 video_path.stem, cfg, out_dir,
@@ -402,21 +437,44 @@ def run_pipeline(
     # --- 多语言成片 ---
     export_i18n_subtitle_track(out_dir, cfg)
 
+    if final_video and Path(str(final_video)).exists():
+        try:
+            analyze_video(Path(str(final_video)), cfg, out_dir)
+        except Exception as e:
+            console.print(f"[yellow]成片质检跳过[/yellow] {e}")
+
     # --- 打包 ---
     zip_path = None
     pub = None
     if at_or_past("pack", from_step):
         _tick("打包导出")
         zip_path = pack_job_zip(out_dir, cfg)
+        export_capcut_pack(out_dir, cfg)
+        build_semi_auto_pack(out_dir, cfg)
+        accounts = load_accounts()
+        if accounts and copy_data:
+            variants = [apply_account_variant(copy_data, a) for a in accounts]
+            (out_dir / "account_variants.json").write_text(
+                json.dumps(variants, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
         _tick("发布")
         pub = run_publish(out_dir, cfg)
+        build_youtube_manifest(out_dir, cfg)
+        build_extra_platform_pack(out_dir, cfg)
         build_publish_pack(out_dir, cfg)
+        run_publish_preflight(out_dir, cfg)
+        export_english_pack(out_dir, cfg)
+
+    if _last_step[0]:
+        timer.end(_last_step[0])
+    timing = timer.finish()
 
     summary = _write_summary(
         out_dir, raw_copy, work_video, final_video, tx, copy_data, cover_path,
-        short_path, cut_path, dub_meta, on_step=on_step, tracker=tracker,
+        short_path, cut_path, dub_meta, on_step=on_step, tracker=tracker, timing=timing,
     )
     run_plugins("after_pack", {"job_dir": out_dir, "summary": summary}, cfg)
+    notify_job_event("job_done", out_dir.name, {"total_seconds": timing.get("total_seconds"), "step": "完成"}, cfg)
     if zip_path:
         summary["zip"] = str(zip_path)
     if pub:
@@ -437,6 +495,7 @@ def _write_summary(
     dub_meta: dict[str, Any] | None = None,
     on_step: StepCallback = None,
     tracker: ProgressTracker | None = None,
+    timing: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if tracker:
         tracker.done()
@@ -462,6 +521,9 @@ def _write_summary(
         summary["promo_copy"] = str(out_dir / "promo_copy.md")
     if dub_meta:
         summary["dubbing"] = dub_meta
+    if timing:
+        summary["timing"] = timing
+        (out_dir / "timing_stats.json").write_text(json.dumps(timing, ensure_ascii=False, indent=2), encoding="utf-8")
 
     (out_dir / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
     console.print(f"\n[bold green]全部完成[/bold green] {out_dir}")

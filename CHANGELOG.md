@@ -1,5 +1,44 @@
 # Changelog
 
+## v3.8.0
+
+- 子进程流水线 + terminate/kill 真正中断 GPU 任务
+- Redis Worker 分布式队列、`worker.py`
+- 离线自动降级（无 LM Studio 时跳过文案/智能剪辑/配音）
+- Whisper 模型进程内缓存、步骤间 GPU 释放
+- RAG 向量检索（sentence-transformers 可选回退）
+- 发布前预审清单、任务对比、A/B 数据回流
+- Playwright 抖音/小红书浏览器半自动
+- YouTube / 视频号 / 快手发布清单
+- 模板市场、数据看板、章节 API、英文工作流
+- 团队 Token、钉钉/Telegram 通知、`install-service.ps1`
+
+## v3.7.0
+
+- 定时发布调度器（后台自动执行到期 B 站发布）
+- 运行中任务强制停止（协作式取消 + Web 按钮）
+- Whisper 热词 / 术语表自动 initial_prompt
+- 耗时分析仪表盘 + LM token 成本估算
+- 任务备份 ZIP 上传恢复、成片质检报告
+- 章节导出（B站/YouTube）、竖屏平台安全区模板
+- 批量 HTML 报告、RAG 知识库文案增强
+- 配置 schema 校验、OpenAPI `/docs`、发布日历 Web UI
+- Prompt 模板 / 多账号矩阵可编辑、Docker Compose 增强
+
+## v3.6.0
+
+- NVENC 硬件编码（`video_quality.encoder: h264_nvenc`）
+- 每步耗时统计 `timing_stats.json` + Web 展示
+- 任务队列：暂停 / 恢复 / 取消排队 / 优先级
+- Webhook / 企业微信 / 邮件任务完成通知
+- 剪映素材包导出、Prompt 模板库、AI 多帧选封面
+- BGM 节拍对齐竖屏窗口（librosa 可选）
+- B 站 OAuth 授权、定时发布元数据、多账号矩阵变体
+- 抖音/小红书半自动发布包、术语自动建议、任务备份 ZIP
+- API 审计日志与限流、用户 `plugins/*.py` 插件
+- Web：浅色主题、移动端适配、工具页、队列控制、封面 A/B 对比
+- `start-web.cmd`、`scripts/install-daemon.ps1`
+
 ## v3.5.0
 
 - README / DEPLOY 文档对齐；GitHub VERSION 远程升级检查
