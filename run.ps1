@@ -18,6 +18,8 @@ param(
     [switch]$OnlyShort,
     [switch]$OnlyPack,
     [string]$Preset = "",
+    [string]$FromStep = "",
+    [switch]$Resume,
     [switch]$OnlyTranscribe,
     [switch]$OnlyCopy,
     [switch]$Force,
@@ -25,6 +27,7 @@ param(
     [switch]$Setup,
     [switch]$Watch,
     [switch]$Web,
+    [switch]$InstallOptional,
     # 运行时文案覆盖
     [string]$Persona = "",
     [string]$Topic = "",
@@ -39,6 +42,8 @@ param(
 
 $Root = $PSScriptRoot
 Set-Location $Root
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
 
 if ($Setup) {
     if (-not (Test-Path ".venv")) {
@@ -55,12 +60,21 @@ if ($Setup) {
         Copy-Item "terminology.example.yaml" "terminology.yaml"
     }
     New-Item -ItemType Directory -Force -Path "watch_in" | Out-Null
-    Write-Host "环境安装完成。请安装 FFmpeg 并加入 PATH，启动 LM Studio Local Server。"
+    Write-Host "Setup done. Install FFmpeg and start LM Studio Local Server."
+    exit 0
+}
+
+if ($InstallOptional) {
+    if (-not (Test-Path ".venv")) { python -m venv .venv }
+    .\.venv\Scripts\Activate.ps1
+    pip install -r requirements-optional.txt
+    python -c "from src.optional_deps import install_optional; install_optional()"
+    Write-Host "Optional packages install finished."
     exit 0
 }
 
 if (-not (Test-Path ".venv")) {
-    Write-Host "请先运行: .\run.ps1 -Setup"
+    Write-Host "Run: .\run.ps1 -Setup"
     exit 1
 }
 
@@ -149,5 +163,7 @@ if ($Platforms)      { $argsList += @("--platforms", $Platforms) }
 if ($OnlyPlatform)   { $argsList += @("--only-platform", $OnlyPlatform) }
 if ($HookStyle)      { $argsList += @("--hook-style", $HookStyle) }
 if ($Preset)         { $argsList += @("--preset", $Preset) }
+if ($FromStep)       { $argsList += @("--from-step", $FromStep) }
+if ($Resume)         { $argsList += "--resume" }
 
 python @argsList

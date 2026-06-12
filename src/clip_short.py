@@ -8,7 +8,9 @@ from typing import Any, Callable
 from rich.console import Console
 
 from .face_crop import build_vertical_crop_filter
+from .ffmpeg_utils import probe_duration, resolve_ffmpeg, run_ffmpeg
 from .smart_select import pick_highlight_window, pick_multiple_highlight_windows
+from .video_quality import ffmpeg_audio_args, ffmpeg_video_args
 from .video_effects import (
     build_fancy_ass,
     build_watermark_filter,
@@ -56,10 +58,12 @@ def _render_one_clip(
     if wm:
         vf_parts.append(wm)
     vf = ",".join(vf_parts)
+    vargs = ffmpeg_video_args(cfg)
+    aargs = ffmpeg_audio_args(cfg)
     cmd = [
         ffmpeg, "-y", "-ss", str(start), "-i", str(video_path),
         "-t", str(actual_len), "-vf", vf,
-        "-c:a", "aac", "-b:a", "128k", str(tmp_clip),
+        *vargs, *aargs, str(tmp_clip),
     ]
     run_ffmpeg(cmd, desc=f"竖屏切片 {actual_len:.0f}s from {start:.1f}s")
 
@@ -70,6 +74,7 @@ def _render_one_clip(
         work = mixed
 
     out_path = out_dir / f"{video_path.stem}_short_{height}p{suffix}.mp4"
+    ccfg = cfg.get("clip_short") or {}
     cstyle = ccfg.get("caption_style") or {}
     if cstyle.get("enabled", False) and subtitle_srt and subtitle_srt.exists():
         ass = build_fancy_ass(subtitle_srt, cfg, out_dir)

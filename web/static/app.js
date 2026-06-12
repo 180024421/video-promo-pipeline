@@ -98,6 +98,77 @@ async function checkVersion() {
   } catch (_) {}
 }
 
+async function loadSetupWizard() {
+  try {
+    const r = await fetch('/api/setup-wizard');
+    const w = await r.json();
+    const card = $('#setup-wizard-card');
+    if (!card) return;
+    card.style.display = w.ready ? 'none' : 'block';
+    $('#setup-progress').textContent = w.progress || '';
+    $('#setup-steps').innerHTML = (w.steps || []).map(s => `
+      <div style="display:flex;align-items:center;gap:8px;margin:6px 0;font-size:0.85rem">
+        <span class="badge ${s.ok ? 'badge-ok' : 'badge-warn'}">${s.ok ? 'OK' : '待办'}</span>
+        <strong>${escHtml(s.title)}</strong>
+        <span class="hint-text">${escHtml(s.hint || '')}</span>
+      </div>`).join('');
+  } catch (_) {}
+}
+
+$('#btn-install-optional')?.addEventListener('click', async () => {
+  toast('正在安装可选依赖…');
+  const r = await fetch('/api/optional-deps/install', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+  const d = await r.json();
+  toast(Object.values(d).every(x => x.ok) ? '可选依赖安装完成' : '部分安装失败，见终端', Object.values(d).every(x => x.ok));
+  loadSetupWizard();
+});
+
+function renderWaveformTimeline(wf, segments) {
+  if (!wf?.peaks?.length) return '';
+  const dur = wf.duration || 1;
+  const bars = wf.peaks.map((p, i) => {
+    const t = (i / wf.peaks.length) * dur;
+    const h = Math.max(2, p * 48);
+    return `<div class="wf-bar" data-t="${t.toFixed(2)}" style="height:${h}px;flex:1;background:var(--accent);opacity:0.5;border-radius:1px"></div>`;
+  }).join('');
+  let segHtml = '';
+  if (segments?.length) {
+    segHtml = `<div style="position:relative;height:24px;margin-top:4px">` +
+      segments.map((s, i) => {
+        const left = (s.start / dur) * 100;
+        const w = Math.max(0.5, ((s.end - s.start) / dur) * 100);
+        return `<div class="wf-seg" data-idx="${i}" style="position:absolute;left:${left}%;width:${w}%;height:100%;background:rgba(76,201,240,0.35);border:1px solid var(--accent);cursor:ew-resize;border-radius:2px" title="${escAttr(s.text || '')}"></div>`;
+      }).join('') + '</div>';
+  }
+  return `<div class="waveform-wrap" style="margin-bottom:12px"><div style="font-size:0.75rem;color:var(--text-muted)">波形时间轴（拖拽色块校对起止）</div>
+    <div style="display:flex;align-items:flex-end;height:52px;gap:1px">${bars}</div>${segHtml}</div>`;
+}
+
+function bindWaveformSegments(container, segments) {
+  const dur = parseFloat(container.dataset.duration) || 1;
+  container.querySelectorAll('.wf-seg').forEach(el => {
+    el.onmousedown = (ev) => {
+      const idx = parseInt(el.dataset.idx, 10);
+      const startX = ev.clientX;
+      const origStart = segments[idx].start;
+      const origEnd = segments[idx].end;
+      const onMove = (e) => {
+        const dx = (e.clientX - startX) / container.offsetWidth * dur;
+        segments[idx].start = Math.max(0, origStart + dx);
+        segments[idx].end = Math.max(segments[idx].start + 0.2, origEnd + dx);
+        const tr = container.closest('#tab-segments')?.querySelector(`tr[data-idx="${idx}"]`);
+        if (tr) {
+          tr.querySelector('.tx-start').value = segments[idx].start.toFixed(2);
+          tr.querySelector('.tx-end').value = segments[idx].end.toFixed(2);
+        }
+      };
+      const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+    };
+  });
+}
+
 // ── Dashboard ──
 let _ffmpegPollTimer = null;
 
@@ -166,6 +237,7 @@ async function loadStatus() {
       card.style.display = 'none';
       stopFfmpegPoll();
     }
+    loadSetupWizard();
   } catch (e) {
     toast('状态加载失败', false);
   }
@@ -485,21 +557,32 @@ async function openJobDetail(name) {
   const segData = d.segments;
   const segEl = $('#tab-segments');
   if (segData?.segments?.length) {
-    segEl.innerHTML = renderSegmentEditor(segData.segments, name);
-    bindSegmentSliders($('#tab-segments'));
-    $('#save-segments-btn')?.addEventListener('click', async () => {
-      const segs = [];
-      $$('#tab-segments tbody tr').forEach(tr => {
-        segs.push({
-          start: parseFloat(tr.querySelector('.tx-start').value) || 0,
-          end: parseFloat(tr.querySelector('.tx-end').value) || 0,
-          text: tr.querySelector('.tx-text').value,
+    fetch(`/api/jobs/${encodeURIComponent(name)}/waveform`).then(r => r.json()).then(wf => {
+      const wfHtml = renderWaveformTimeline(wf, segData.segments);
+      segEl.innerHTML = wfHtml + renderSegmentEditor(segData.segments, name);
+      const wrap = segEl.querySelector('.waveform-wrap');
+      if (wrap) {
+        wrap.dataset.duration = String(wf.duration || 1);
+        bindWaveformSegments(wrap.parentElement, segData.segments);
+      }
+      bindSegmentSliders($('#tab-segments'));
+      $('#save-segments-btn')?.addEventListener('click', async () => {
+        const segs = [];
+        $$('#tab-segments tbody tr').forEach(tr => {
+          segs.push({
+            start: parseFloat(tr.querySelector('.tx-start').value) || 0,
+            end: parseFloat(tr.querySelector('.tx-end').value) || 0,
+            text: tr.querySelector('.tx-text').value,
+          });
         });
+        await fetch(`/api/jobs/${encodeURIComponent(name)}/segments`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ segments: segs }),
+        });
+        toast('字幕已保存，可点「重跑字幕」');
       });
-      await fetch(`/api/jobs/${encodeURIComponent(name)}/segments`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ segments: segs }),
-      });
-      toast('字幕已保存，可点「重跑字幕」');
+    }).catch(() => {
+      segEl.innerHTML = renderSegmentEditor(segData.segments, name);
+      bindSegmentSliders($('#tab-segments'));
     });
   } else {
     segEl.innerHTML = '<div class="empty">暂无 segments.json</div>';
@@ -511,7 +594,6 @@ async function openJobDetail(name) {
   });
 
   $('#tab-publish').innerHTML = '<div class="empty">加载发布包...</div>';
-  $('#tab-publish').innerHTML = '<div class="empty">加载发布包...</div>';
   fetch(`/api/jobs/${encodeURIComponent(name)}/publish-pack`).then(r => r.json()).then(p => {
     let html = '<div class="copy-block"><h4>一键复制</h4>';
     for (const [k, v] of Object.entries(p.clipboard || {})) {
@@ -522,6 +604,23 @@ async function openJobDetail(name) {
     html += '</div>';
     $('#tab-publish').innerHTML = html || '<div class="empty">暂无</div>';
   });
+
+  fetch(`/api/jobs/${encodeURIComponent(name)}/upload-progress`).then(r => r.json()).then(up => {
+    if (!up || up.status === 'none') return;
+    const pub = $('#tab-publish');
+    let extra = `<div class="card" style="margin-top:1rem"><h4>B站上传</h4>
+      <p>状态: ${escHtml(up.status)} · ${up.percent || 0}% — ${escHtml(up.message || '')}</p>`;
+    if (up.bvid) extra += `<p><a href="https://www.bilibili.com/video/${up.bvid}" target="_blank">${up.bvid}</a></p>`;
+    if (up.status === 'error' || up.resumable) {
+      extra += `<button class="btn btn-sm btn-primary" id="bili-retry-btn">重试/续传</button>`;
+    }
+    extra += '</div>';
+    pub.innerHTML += extra;
+    $('#bili-retry-btn')?.addEventListener('click', async () => {
+      await fetch(`/api/jobs/${encodeURIComponent(name)}/bilibili-retry`, { method: 'POST' });
+      toast('已启动 B 站上传重试');
+    });
+  }).catch(() => {});
 
   $('#tab-vision').innerHTML = '<div class="empty">加载中...</div>';
   fetch(`/api/jobs/${encodeURIComponent(name)}/vision-plan`).then(r => r.json()).then(v => {

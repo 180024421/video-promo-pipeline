@@ -80,6 +80,8 @@ def main() -> None:
     parser.add_argument("--preset", default="", help="工作流预设 tech_tutorial|short_commentary|game_commentary")
     parser.add_argument("--preflight", action="store_true", help="运行前检查环境")
     parser.add_argument("--force", action="store_true", help="忽略断点续跑，强制重新执行")
+    parser.add_argument("--from-step", default="", help="从指定步骤继续: cut|transcribe|smart|dub|burn|short|copy|pack")
+    parser.add_argument("--resume", action="store_true", help="从失败步骤自动继续（读 pipeline_progress.json）")
 
     # 运行时文案覆盖
     parser.add_argument("--persona", default="", help="覆盖文案人设")
@@ -123,6 +125,23 @@ def main() -> None:
         )
         return
 
+    from_step = args.from_step or None
+    if args.resume and args.job_dir:
+        from src.progress_tracker import load_progress
+        from src.resume_from import suggest_resume_step
+        from_step = suggest_resume_step(load_progress(args.job_dir)) or "transcribe"
+
+    if from_step and args.job_dir and not args.video:
+        run_pipeline(
+            args.job_dir,
+            job_dir=args.job_dir,
+            from_step=from_step,
+            force=True,
+            preflight=args.preflight,
+            preset=args.preset or None,
+        )
+        return
+
     if args.preflight and not args.video:
         ok = run_preflight(cfg)
         raise SystemExit(0 if ok else 1)
@@ -141,6 +160,7 @@ def main() -> None:
         job_dir=args.job_dir,
         preflight=args.preflight,
         force=args.force,
+        from_step=from_step,
         preset=args.preset or None,
     )
 

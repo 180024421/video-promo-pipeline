@@ -358,7 +358,7 @@ def run_pipeline(
         _tick("推广文案")
         run_plugins("before_copy", {"job_dir": out_dir, "tx": tx}, cfg)
         promo_json = out_dir / "promo_copy.json"
-        hot = inject_hot_topics(cfg)
+        hot = inject_hot_topics(cfg, tx.get("transcript", ""))
         if hot:
             tx = {**tx, "hot_topics": hot}
         if resume and promo_json.exists() and not force:

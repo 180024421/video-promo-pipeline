@@ -1,5 +1,17 @@
 # Changelog
 
+## v3.5.0
+
+- README / DEPLOY 文档对齐；GitHub VERSION 远程升级检查
+- `video_quality` 贯穿烧字幕、竖屏、花字等 FFmpeg 重编码步骤
+- 首次使用 Web 向导 + 可选依赖一键安装 API
+- B 站上传：分片重试、断点续传、bvid 链接、Web 重试按钮
+- 抖音/小红书发布清单增强（manual_steps + clipboard）
+- 热点话题：B 站热榜 API + LM 动态生成
+- 字幕波形时间轴 + 色块拖拽校对
+- CLI：`--from-step` / `--resume`；`run.ps1 -InstallOptional`
+- 测试：Web API 冒烟 + v3.5 单元测试
+
 ## v3.4.0
 
 - B 站 UPOS 分片上传 + Web 上传进度

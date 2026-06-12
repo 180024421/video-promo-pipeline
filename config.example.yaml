@@ -222,6 +222,8 @@ publish:
     enabled: false
     client_key: ""
     client_secret: ""
+  xiaohongshu:
+    enabled: false
 
 # ──────────────────────────────────────────────
 # 工作流预设
@@ -453,6 +455,7 @@ whisperx:
 hot_topics:
   enabled: false
   platform: bilibili
+  source: auto              # auto | api | lm | custom（仅 custom 列表）
   custom: []
   max_inject: 3
 

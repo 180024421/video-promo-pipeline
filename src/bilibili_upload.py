@@ -83,6 +83,20 @@ def _init_preupload(access_token: str, filename: str, file_size: int) -> dict[st
     return _http_json(url)
 
 
+def _extract_bvid(submit: dict[str, Any] | None) -> str | None:
+    if not submit:
+        return None
+    for key in ("bvid", "BvId", "archive_bvid"):
+        if submit.get(key):
+            return str(submit[key])
+    data = submit.get("data")
+    if isinstance(data, dict):
+        for key in ("bvid", "BvId"):
+            if data.get(key):
+                return str(data[key])
+    return None
+
+
 def _upload_chunks_upos(
     video_path: Path,
     upos_uri: str,
@@ -91,38 +105,70 @@ def _upload_chunks_upos(
     *,
     job_dir: Path | None = None,
     on_progress: ProgressCallback = None,
+    resume: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """按 UPOS 协议分片上传。"""
+    """按 UPOS 协议分片上传，支持断点续传。"""
     total = video_path.stat().st_size
     chunk_count = max(1, math.ceil(total / CHUNK_SIZE))
-    upload_id = hashlib.md5(f"{video_path.name}{time.time()}".encode()).hexdigest()[:16]
+    upload_id = (resume or {}).get("upload_id") or hashlib.md5(f"{video_path.name}{time.time()}".encode()).hexdigest()[:16]
+    start_part = int((resume or {}).get("chunks_done", 0)) + 1
+    uploaded = int((resume or {}).get("uploaded_bytes", 0))
+    if start_part > 1:
+        uploaded = min(uploaded, (start_part - 1) * CHUNK_SIZE)
 
     _save_progress(job_dir, {
         "status": "uploading",
-        "percent": 0,
-        "uploaded_bytes": 0,
+        "percent": int(uploaded / total * 100) if total else 0,
+        "uploaded_bytes": uploaded,
         "total_bytes": total,
         "chunks_total": chunk_count,
-        "chunks_done": 0,
-        "message": "开始分片上传",
+        "chunks_done": start_part - 1,
+        "upload_id": upload_id,
+        "upos_uri": upos_uri,
+        "endpoint": endpoint,
+        "auth_hint": auth[:12] + "..." if auth else "",
+        "message": "断点续传" if start_part > 1 else "开始分片上传",
     })
 
-    uploaded = 0
     with video_path.open("rb") as f:
-        for part in range(1, chunk_count + 1):
+        if start_part > 1:
+            f.seek((start_part - 1) * CHUNK_SIZE)
+        for part in range(start_part, chunk_count + 1):
             chunk = f.read(CHUNK_SIZE)
             if not chunk:
                 break
             start = uploaded
             end = uploaded + len(chunk) - 1
-            put_url = f"https:{endpoint}/{upos_uri}?uploadId={upload_id}&partNumber={part}&chunk={part}&chunks={chunk_count}&size={len(chunk)}&start={start}&end={end}&total={total}"
+            put_url = (
+                f"https:{endpoint}/{upos_uri}?uploadId={upload_id}&partNumber={part}"
+                f"&chunk={part}&chunks={chunk_count}&size={len(chunk)}&start={start}&end={end}&total={total}"
+            )
             headers = {
                 "Authorization": auth,
                 "X-Upos-Auth": auth,
                 "Content-Type": "application/octet-stream",
                 "Content-Length": str(len(chunk)),
             }
-            _http_put_chunk(put_url, chunk, headers)
+            last_err: Exception | None = None
+            for attempt in range(3):
+                try:
+                    _http_put_chunk(put_url, chunk, headers)
+                    last_err = None
+                    break
+                except Exception as e:
+                    last_err = e
+                    time.sleep(1.5 * (attempt + 1))
+            if last_err:
+                _save_progress(job_dir, {
+                    "status": "error",
+                    "percent": int(uploaded / total * 100),
+                    "chunks_done": part - 1,
+                    "upload_id": upload_id,
+                    "message": str(last_err),
+                    "resumable": True,
+                })
+                raise last_err
+
             uploaded += len(chunk)
             pct = int(uploaded / total * 100)
             msg = f"分片 {part}/{chunk_count} ({pct}%)"
@@ -133,6 +179,9 @@ def _upload_chunks_upos(
                 "total_bytes": total,
                 "chunks_total": chunk_count,
                 "chunks_done": part,
+                "upload_id": upload_id,
+                "upos_uri": upos_uri,
+                "endpoint": endpoint,
                 "message": msg,
             })
             if on_progress:
@@ -152,6 +201,7 @@ def upload_video_bilibili(
     *,
     job_dir: Path | None = None,
     on_progress: ProgressCallback = None,
+    resume_upload: bool = False,
 ) -> dict[str, Any]:
     """B 站开放平台 OAuth + UPOS 分片上传；凭证不全时返回 manifest。"""
     pcfg = (cfg.get("publish") or {}).get("bilibili") or {}
@@ -201,9 +251,14 @@ def upload_video_bilibili(
             manifest["note"] = "preupload 未返回 upos_uri，请检查应用权限"
             return manifest
 
+        resume_state = None
+        if resume_upload and job_dir:
+            resume_state = load_upload_progress(job_dir)
+
         upload_result = _upload_chunks_upos(
             video_path, upos_uri, auth, endpoint,
             job_dir=job_dir, on_progress=on_progress,
+            resume=resume_state if resume_state and resume_state.get("resumable") else None,
         )
 
         submit_data = {
@@ -219,10 +274,12 @@ def upload_video_bilibili(
         except urllib.error.HTTPError as e:
             submit_resp = {"http_error": e.code, "note": "分片已完成，稿件提交需应用级 arcopen 权限"}
 
+        bvid = _extract_bvid(submit_resp if isinstance(submit_resp, dict) else None)
         _save_progress(job_dir, {
             "status": "done",
             "percent": 100,
             "message": "上传完成",
+            "bvid": bvid,
             "upload_result": upload_result,
             "submit": submit_resp,
         })
@@ -230,6 +287,9 @@ def upload_video_bilibili(
         manifest["status"] = "uploaded"
         manifest["upload_result"] = upload_result
         manifest["submit"] = submit_resp
+        if bvid:
+            manifest["bvid"] = bvid
+            manifest["video_url"] = f"https://www.bilibili.com/video/{bvid}"
         console.print("[green]B站分片上传完成[/green]")
         return {"ok": True, **manifest}
     except Exception as e:
@@ -244,3 +304,33 @@ def load_upload_progress(job_dir: Path) -> dict[str, Any] | None:
     if not path.exists():
         return None
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def retry_upload_bilibili(
+    job_dir: Path,
+    cfg: dict[str, Any],
+    *,
+    on_progress: ProgressCallback = None,
+) -> dict[str, Any]:
+    """重试或断点续传 B 站上传。"""
+    summary_path = job_dir / "summary.json"
+    if not summary_path.exists():
+        return {"ok": False, "error": "缺少 summary.json"}
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    video = summary.get("final_video") or summary.get("short_video")
+    if not video:
+        return {"ok": False, "error": "无视频文件"}
+    promo_path = job_dir / "promo_copy.json"
+    title = job_dir.name.split("_")[0]
+    if promo_path.exists():
+        promo = json.loads(promo_path.read_text(encoding="utf-8"))
+        b = promo.get("bilibili") or {}
+        title = b.get("recommended_title") or (b.get("titles") or [title])[0]
+    desc_path = job_dir / "bilibili_description.txt"
+    desc = desc_path.read_text(encoding="utf-8") if desc_path.exists() else ""
+    prog = load_upload_progress(job_dir)
+    resume = bool(prog and prog.get("status") in ("error", "uploading") and prog.get("resumable"))
+    return upload_video_bilibili(
+        Path(str(video)), title, desc, cfg,
+        job_dir=job_dir, on_progress=on_progress, resume_upload=resume,
+    )

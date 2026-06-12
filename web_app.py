@@ -22,7 +22,10 @@ from starlette.requests import Request as StarletteRequest
 from src.config_io import export_config_bundle, import_config_bundle
 from src.health import check_health
 from src.job_logger import read_job_log
-from src.bilibili_upload import load_upload_progress
+from src.bilibili_upload import load_upload_progress, retry_upload_bilibili
+from src.optional_deps import check_optional, install_optional
+from src.setup_wizard import get_setup_checklist
+from src.waveform import extract_waveform_peaks
 from src.resume_from import suggest_resume_step
 from src.ws_hub import broadcast_sync, register, unregister
 from src.config_loader import ROOT, load_config, output_dir, save_config
@@ -40,8 +43,8 @@ from src.terminology import load_terminology, save_terminology, terminology_path
 
 WEB_DIR = ROOT / "web"
 STATIC_DIR = WEB_DIR / "static"
-APP_VERSION = "3.4.0"
-LATEST_VERSION_URL = ""  # 留空仅比对本地 VERSION 文件
+APP_VERSION = "3.5.0"
+LATEST_VERSION_URL = "https://raw.githubusercontent.com/180024421/video-promo-pipeline/main/VERSION"
 
 ASSETS_DIR = ROOT / "assets"
 
@@ -215,6 +218,62 @@ def index() -> HTMLResponse:
 @app.get("/api/health")
 def api_health():
     return JSONResponse(check_health(load_config()))
+
+
+@app.get("/api/setup-wizard")
+def api_setup_wizard():
+    return JSONResponse(get_setup_checklist(load_config()))
+
+
+@app.get("/api/optional-deps")
+def api_optional_deps():
+    return JSONResponse({"packages": check_optional()})
+
+
+@app.post("/api/optional-deps/install")
+async def api_optional_install(request: Request):
+    body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    keys = body.get("packages") or list(check_optional().keys())
+    return JSONResponse(install_optional(keys))
+
+
+@app.get("/api/jobs/{job_name}/waveform")
+def api_job_waveform(job_name: str):
+    job_dir = _safe_job_path(job_name)
+    if not job_dir:
+        return JSONResponse({"error": "任务不存在"}, status_code=404)
+    summary_path = job_dir / "summary.json"
+    video = None
+    if summary_path.exists():
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        for key in ("work_video", "final_video", "source_video"):
+            p = summary.get(key)
+            if p and Path(str(p)).exists():
+                video = Path(str(p))
+                break
+    if not video:
+        video = next((p for p in job_dir.iterdir() if p.suffix.lower() in {".mp4", ".mkv"}), None)
+    if not video:
+        return JSONResponse({"error": "无视频"}, status_code=404)
+    cfg = load_config()
+    data = extract_waveform_peaks(video, cfg)
+    segs_path = job_dir / "segments.json"
+    if segs_path.exists():
+        data["segments"] = json.loads(segs_path.read_text(encoding="utf-8")).get("segments", [])
+    return JSONResponse(data)
+
+
+@app.post("/api/jobs/{job_name}/bilibili-retry")
+def api_bilibili_retry(job_name: str):
+    job_dir = _safe_job_path(job_name)
+    if not job_dir:
+        return JSONResponse({"error": "任务不存在"}, status_code=404)
+
+    def _run(cb):
+        retry_upload_bilibili(job_dir, load_config())
+
+    _run_job_async(job_name, _run)
+    return JSONResponse({"ok": True})
 
 
 @app.get("/api/version")

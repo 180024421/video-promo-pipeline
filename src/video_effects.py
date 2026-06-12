@@ -6,7 +6,7 @@ from typing import Any
 
 from rich.console import Console
 
-from .ffmpeg_utils import escape_sub_path, probe_duration, resolve_ffmpeg, run_ffmpeg
+from .video_quality import ffmpeg_audio_args, ffmpeg_video_args
 
 console = Console()
 
@@ -144,10 +144,12 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 def burn_fancy_subtitles(video_path: Path, subtitle_path: Path, cfg: dict[str, Any], out_path: Path) -> Path:
     ffmpeg = resolve_ffmpeg(cfg)
     sub_esc = escape_sub_path(subtitle_path)
+    vargs = ffmpeg_video_args(cfg)
+    aargs = ffmpeg_audio_args(cfg, copy_audio=True)
     cmd = [
         ffmpeg, "-y", "-i", str(video_path),
         "-vf", f"subtitles='{sub_esc}'",
-        "-c:a", "copy", str(out_path),
+        *vargs, *aargs, str(out_path),
     ]
     run_ffmpeg(cmd, desc="花字字幕烧录")
     return out_path

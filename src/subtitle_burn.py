@@ -7,6 +7,7 @@ from typing import Any
 from rich.console import Console
 
 from .ffmpeg_utils import FFMPEG_INSTALL_HINT, escape_sub_path, run_ffmpeg
+from .video_quality import ffmpeg_audio_args, ffmpeg_video_args
 
 console = Console()
 
@@ -40,5 +41,10 @@ def burn_subtitles(
     style = f"FontName={font_name},FontSize={font_size},MarginV={margin_v},Outline=2,Shadow=1"
     vf = f"subtitles='{srt_escaped}':force_style='{style}'"
     out_path = out_dir / f"{video_path.stem}_subtitled{video_path.suffix}"
-    run_ffmpeg([ffmpeg, "-y", "-i", str(video_path), "-vf", vf, "-c:a", "copy", str(out_path)], desc="烧录字幕")
+    vargs = ffmpeg_video_args(cfg)
+    aargs = ffmpeg_audio_args(cfg, copy_audio=True)
+    run_ffmpeg(
+        [ffmpeg, "-y", "-i", str(video_path), "-vf", vf, *vargs, *aargs, str(out_path)],
+        desc="烧录字幕",
+    )
     return out_path

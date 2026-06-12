@@ -1,5 +1,7 @@
 # 用户手册
 
+> 版本 **v3.5.0** — 部署见 [DEPLOY.md](DEPLOY.md)
+
 ## 快速开始
 
 1. 复制 `config.example.yaml` 为 `config.yaml`
@@ -10,6 +12,14 @@
 ## 核心流程
 
 上传录屏 → Whisper 转写 → 粗剪/智能剪辑 → LM 解说稿 → TTS 配音 → 烧字幕 → 竖屏切片 → 多平台文案 → 封面 → 打包发布
+
+## v3.5 新功能
+
+- **首次使用向导**：仪表盘自动显示待办步骤
+- **可选依赖**：`POST /api/optional-deps/install` 或 `.\run.ps1 -InstallOptional`
+- **波形字幕校对**：任务详情 → 字幕校对 Tab，拖拽色块调整起止
+- **B 站上传重试**：发布 Tab → 重试/续传
+- **CLI 续跑**：`python process.py --job-dir output\xxx --resume`
 
 ## v3.4 新功能
 

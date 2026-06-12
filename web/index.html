@@ -28,6 +28,13 @@
   <!-- Dashboard -->
   <section id="page-dashboard" class="page active">
     <h1 class="page-title">仪表盘 <small id="app-version" style="font-size:0.65em;color:var(--text-muted)"></small></h1>
+    <div class="card" id="setup-wizard-card" style="display:none">
+      <div class="card-title">首次使用向导 <span id="setup-progress" class="hint-text"></span></div>
+      <div id="setup-steps"></div>
+      <div class="btn-row" style="margin-top:0.5rem">
+        <button type="button" class="btn btn-secondary btn-sm" id="btn-install-optional">安装可选依赖</button>
+      </div>
+    </div>
     <div class="card" id="version-banner" style="display:none;background:rgba(233,69,96,0.15);border-color:var(--accent)">
       <div class="card-title">新版本可用</div>
       <p id="version-banner-text" style="font-size:0.85rem"></p>

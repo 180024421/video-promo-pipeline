@@ -22,6 +22,15 @@ def resolve_quality(cfg: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def ffmpeg_video_args(cfg: dict[str, Any]) -> list[str]:
+def ffmpeg_video_args(cfg: dict[str, Any], *, copy_video: bool = False) -> list[str]:
+    if copy_video:
+        return ["-c:v", "copy"]
     q = resolve_quality(cfg)
     return ["-c:v", "libx264", "-crf", str(q["crf"]), "-preset", q["preset"]]
+
+
+def ffmpeg_audio_args(cfg: dict[str, Any], *, copy_audio: bool = False) -> list[str]:
+    if copy_audio:
+        return ["-c:a", "copy"]
+    q = resolve_quality(cfg)
+    return ["-c:a", "aac", "-b:a", q["audio_bitrate"]]
