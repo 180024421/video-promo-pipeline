@@ -1,0 +1,40 @@
+# 复制为 config.yaml 后修改
+
+whisper:
+  model: medium          # tiny/base/small/medium/large-v3；8G 显存建议 small 或 medium
+  device: cuda           # cuda 或 cpu
+  compute_type: float16  # cuda 用 float16；cpu 用 int8
+  language: zh
+
+auto_editor:
+  enabled: true
+  # 静音阈值，越大删得越少
+  silent_threshold: 0.04
+  # 低于此音量的片段视为静音（秒）
+  min_silence_duration: 0.35
+
+ffmpeg:
+  # 留空则从 PATH 查找；Windows 可填完整路径
+  path: ""
+
+subtitle:
+  # 烧录字幕样式（ASS force_style）
+  font_size: 22
+  margin_v: 28
+
+lm_studio:
+  enabled: true
+  base_url: http://127.0.0.1:1234/v1
+  api_key: lm-studio
+  model: ""              # 留空则使用 LM Studio 当前加载的模型
+  temperature: 0.7
+
+copy:
+  # 技术推广人设，可改成你的账号定位
+  persona: "Java 全栈与自动化测试工程师，分享真实项目实践（已脱敏）"
+  platforms:
+    - bilibili
+    - xiaohongshu
+
+output:
+  dir: output

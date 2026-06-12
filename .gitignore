@@ -1,0 +1,15 @@
+config.yaml
+output/
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.mp4
+*.mkv
+*.mov
+*.wav
+*.srt
+*.vtt
+*.ass
+*.json
+!config.example.yaml
