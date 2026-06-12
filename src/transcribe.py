@@ -6,6 +6,10 @@ from typing import Any
 
 from rich.console import Console
 
+from .subtitle_ass import export_subtitle_formats
+from .subtitle_post import post_process_segments
+from .terminology import apply_replacements, apply_to_segments, load_terminology
+
 console = Console()
 
 
@@ -29,6 +33,18 @@ def segments_to_srt(segments: list[dict[str, Any]]) -> str:
         lines.append(f"{start} --> {end}")
         lines.append(text)
         lines.append("")
+    return "\n".join(lines)
+
+
+def build_chapter_outline(segments: list[dict[str, Any]], max_items: int = 12) -> str:
+    if not segments:
+        return ""
+    step = max(1, len(segments) // max_items)
+    lines: list[str] = []
+    for seg in segments[::step][:max_items]:
+        m = int(seg["start"] // 60)
+        s = int(seg["start"] % 60)
+        lines.append(f"{m:02d}:{s:02d} {seg.get('text', '')[:40]}")
     return "\n".join(lines)
 
 
@@ -58,7 +74,12 @@ def transcribe_video(video_path: Path, cfg: dict[str, Any], out_dir: Path) -> di
             "text": seg.text.strip(),
         })
 
+    replacements = load_terminology(cfg)
+    segments = apply_to_segments(segments, replacements)
+    segments = post_process_segments(segments, cfg)
+
     transcript = "\n".join(s["text"] for s in segments if s["text"])
+    transcript = apply_replacements(transcript, replacements)
     srt_text = segments_to_srt(segments)
 
     srt_path = out_dir / "subtitle.srt"
@@ -71,6 +92,7 @@ def transcribe_video(video_path: Path, cfg: dict[str, Any], out_dir: Path) -> di
         json.dumps({"language": info.language, "duration": info.duration, "segments": segments}, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+    extra = export_subtitle_formats(segments, cfg, out_dir)
 
     console.print(f"[green]字幕已生成[/green] {srt_path}")
     return {
@@ -79,4 +101,7 @@ def transcribe_video(video_path: Path, cfg: dict[str, Any], out_dir: Path) -> di
         "segments_path": json_path,
         "transcript": transcript,
         "segments": segments,
+        "chapter_outline": build_chapter_outline(segments),
+        "duration": info.duration,
+        "subtitle_formats": {k: str(v) for k, v in extra.items()},
     }

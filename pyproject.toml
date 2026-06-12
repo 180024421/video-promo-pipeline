@@ -1,0 +1,25 @@
+[project]
+name = "video-promo-pipeline"
+version = "2.0.0"
+description = "本地录屏视频：自动字幕、粗剪、推广文案生成"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+dependencies = [
+  "faster-whisper>=1.1.0",
+  "openai>=1.40.0",
+  "pyyaml>=6.0.1",
+  "rich>=13.7.0",
+  "auto-editor>=24.0.0",
+  "Pillow>=10.0.0",
+]
+
+[project.optional-dependencies]
+web = ["fastapi>=0.115.0", "uvicorn[standard]>=0.30.0", "python-multipart>=0.0.9"]
+dev = ["pytest>=8.0.0"]
+
+[project.scripts]
+video-promo = "process:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

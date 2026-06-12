@@ -1,0 +1,14 @@
+# 复制为 terminology.yaml 后按需修改
+# 转写完成后对 SRT / transcript 做批量替换（不区分大小写）
+
+replacements:
+  "a d b": "ADB"
+  "adb ide": "adb-ide"
+  "yolo": "YOLO"
+  "spring boot": "Spring Boot"
+  "springboot": "SpringBoot"
+  "lm studio": "LM Studio"
+  "ffmpeg": "FFmpeg"
+  "外挂": "自动化脚本"
+  "搬砖": "批量测试"
+  "挂机赚钱": "自动化测试"

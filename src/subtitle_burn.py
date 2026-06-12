@@ -25,10 +25,10 @@ def burn_subtitles(video_path: Path, srt_path: Path, cfg: dict[str, Any], out_di
     scfg = cfg.get("subtitle", {})
     font_size = scfg.get("font_size", 22)
     margin_v = scfg.get("margin_v", 28)
+    font_name = scfg.get("font_name", "Microsoft YaHei")
 
-    # Windows 路径转义给 ffmpeg subtitles 滤镜
     srt_escaped = str(srt_path.resolve()).replace("\\", "/").replace(":", "\\:")
-    style = f"FontSize={font_size},MarginV={margin_v},Outline=2,Shadow=1"
+    style = f"FontName={font_name},FontSize={font_size},MarginV={margin_v},Outline=2,Shadow=1"
     vf = f"subtitles='{srt_escaped}':force_style='{style}'"
 
     out_path = out_dir / f"{video_path.stem}_subtitled{video_path.suffix}"

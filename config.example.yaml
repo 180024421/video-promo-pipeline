@@ -1,40 +1,76 @@
 # 复制为 config.yaml 后修改
 
 whisper:
-  model: medium          # tiny/base/small/medium/large-v3；8G 显存建议 small 或 medium
-  device: cuda           # cuda 或 cpu
-  compute_type: float16  # cuda 用 float16；cpu 用 int8
+  model: small           # 4060Ti 8G 建议 small；质量优先用 medium
+  device: cuda
+  compute_type: float16
   language: zh
 
 auto_editor:
   enabled: true
-  # 静音阈值，越大删得越少
   silent_threshold: 0.04
-  # 低于此音量的片段视为静音（秒）
   min_silence_duration: 0.35
 
 ffmpeg:
-  # 留空则从 PATH 查找；Windows 可填完整路径
   path: ""
 
 subtitle:
-  # 烧录字幕样式（ASS force_style）
   font_size: 22
   margin_v: 28
+  font_name: Microsoft YaHei
+  max_chars_per_line: 18
+  merge_min_duration: 1.2
+  remove_fillers: true
+  export_ass: true
+  export_vtt: true
+
+terminology:
+  enabled: true
+  file: terminology.yaml
+
+clip_short:
+  enabled: true
+  duration_sec: 75
+  width: 1080
+  height: 1920
+  # start | middle | chapter_first
+  position: start
+
+cover:
+  enabled: true
+  width: 1280
+  height: 720
+  bg_color: "#1a1a2e"
+  text_color: "#eaeaea"
+  accent_color: "#4cc9f0"
 
 lm_studio:
   enabled: true
   base_url: http://127.0.0.1:1234/v1
   api_key: lm-studio
-  model: ""              # 留空则使用 LM Studio 当前加载的模型
+  model: ""
   temperature: 0.7
+  json_retry: true
 
 copy:
-  # 技术推广人设，可改成你的账号定位
   persona: "Java 全栈与自动化测试工程师，分享真实项目实践（已脱敏）"
+  topic: ""
+  prompt_file: prompts/bilibili_java.md
   platforms:
     - bilibili
     - xiaohongshu
+
+pipeline:
+  copy_source_video: false
+  resume: true
+
+batch:
+  watch_dir: watch_in
+  poll_interval_sec: 30
+
+web:
+  host: 127.0.0.1
+  port: 8766
 
 output:
   dir: output

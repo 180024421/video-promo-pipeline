@@ -17,10 +17,11 @@ def run_auto_editor(video_path: Path, cfg: dict[str, Any], out_dir: Path) -> Pat
         return None
 
     if shutil.which("auto-editor") is None:
-        console.print("[yellow]未找到 auto-editor，跳过粗剪。安装: pip install auto-editor[/yellow]")
+        console.print("[yellow]未找到 auto-editor，跳过粗剪[/yellow]")
         return None
 
     threshold = acfg.get("silent_threshold", 0.04)
+    min_silence = acfg.get("min_silence_duration", 0.35)
     out_path = out_dir / f"{video_path.stem}_cut{video_path.suffix}"
 
     cmd = [
@@ -34,9 +35,11 @@ def run_auto_editor(video_path: Path, cfg: dict[str, Any], out_dir: Path) -> Pat
         str(out_path),
         "--silent_threshold",
         str(threshold),
+        "--min_clip_duration",
+        str(min_silence),
     ]
 
-    console.print(f"[cyan]Auto-Editor 粗剪[/cyan] threshold={threshold}")
+    console.print(f"[cyan]Auto-Editor 粗剪[/cyan] threshold={threshold} min_clip={min_silence}")
     subprocess.run(cmd, check=True)
     console.print(f"[green]粗剪完成[/green] {out_path}")
     return out_path
