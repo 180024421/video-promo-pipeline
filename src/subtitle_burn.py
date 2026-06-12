@@ -1,50 +1,44 @@
 from __future__ import annotations
 
 import shutil
-import subprocess
 from pathlib import Path
 from typing import Any
 
 from rich.console import Console
 
+from .ffmpeg_utils import FFMPEG_INSTALL_HINT, escape_sub_path, run_ffmpeg
+
 console = Console()
 
 
 def resolve_ffmpeg(cfg: dict[str, Any]) -> str:
-    custom = cfg.get("ffmpeg", {}).get("path") or ""
-    if custom:
-        return custom
-    found = shutil.which("ffmpeg")
-    if not found:
-        raise RuntimeError("未找到 ffmpeg，请安装并加入 PATH: https://ffmpeg.org/download.html")
-    return found
+    from .ffmpeg_utils import resolve_ffmpeg as _resolve
+    return _resolve(cfg)
 
 
-def burn_subtitles(video_path: Path, srt_path: Path, cfg: dict[str, Any], out_dir: Path) -> Path:
+def burn_subtitles(
+    video_path: Path,
+    srt_path: Path,
+    cfg: dict[str, Any],
+    out_dir: Path,
+    *,
+    fancy: bool = False,
+) -> Path:
     ffmpeg = resolve_ffmpeg(cfg)
     scfg = cfg.get("subtitle", {})
     font_size = scfg.get("font_size", 22)
     margin_v = scfg.get("margin_v", 28)
     font_name = scfg.get("font_name", "Microsoft YaHei")
 
-    srt_escaped = str(srt_path.resolve()).replace("\\", "/").replace(":", "\\:")
+    if fancy:
+        from .video_effects import build_fancy_ass, burn_fancy_subtitles
+        ass = build_fancy_ass(srt_path, cfg, out_dir)
+        out_path = out_dir / f"{video_path.stem}_subtitled{video_path.suffix}"
+        return burn_fancy_subtitles(video_path, ass, cfg, out_path)
+
+    srt_escaped = escape_sub_path(srt_path)
     style = f"FontName={font_name},FontSize={font_size},MarginV={margin_v},Outline=2,Shadow=1"
     vf = f"subtitles='{srt_escaped}':force_style='{style}'"
-
     out_path = out_dir / f"{video_path.stem}_subtitled{video_path.suffix}"
-    cmd = [
-        ffmpeg,
-        "-y",
-        "-i",
-        str(video_path),
-        "-vf",
-        vf,
-        "-c:a",
-        "copy",
-        str(out_path),
-    ]
-
-    console.print("[cyan]FFmpeg 烧录字幕[/cyan]")
-    subprocess.run(cmd, check=True)
-    console.print(f"[green]成片已生成[/green] {out_path}")
+    run_ffmpeg([ffmpeg, "-y", "-i", str(video_path), "-vf", vf, "-c:a", "copy", str(out_path)], desc="烧录字幕")
     return out_path

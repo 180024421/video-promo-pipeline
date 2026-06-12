@@ -9,6 +9,19 @@ import yaml
 from .config_loader import ROOT
 
 
+def terminology_path(cfg: dict[str, Any]) -> Path:
+    tcfg = cfg.get("terminology") or {}
+    return ROOT / tcfg.get("file", "terminology.yaml")
+
+
+def save_terminology(replacements: dict[str, str], cfg: dict[str, Any]) -> Path:
+    path = terminology_path(cfg)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = {"replacements": replacements}
+    path.write_text(yaml.dump(data, allow_unicode=True, default_flow_style=False), encoding="utf-8")
+    return path
+
+
 def load_terminology(cfg: dict[str, Any]) -> dict[str, str]:
     tcfg = cfg.get("terminology") or {}
     if not tcfg.get("enabled", True):

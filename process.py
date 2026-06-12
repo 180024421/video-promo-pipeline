@@ -70,8 +70,14 @@ def main() -> None:
     parser.add_argument("--skip-cut", action="store_true", help="跳过 Auto-Editor 粗剪")
     parser.add_argument("--skip-burn", action="store_true", help="跳过 FFmpeg 烧录字幕")
     parser.add_argument("--skip-copy", action="store_true", help="跳过 LM Studio 文案生成")
+    parser.add_argument("--skip-dub", action="store_true", help="跳过 AI 配音解说")
     parser.add_argument("--only-transcribe", action="store_true", help="仅转写字幕")
     parser.add_argument("--only-copy", action="store_true", help="仅根据已有 transcript 生成文案")
+    parser.add_argument("--only-dub", action="store_true", help="仅重跑配音（需已有转写）")
+    parser.add_argument("--only-burn", action="store_true", help="仅重跑烧录字幕")
+    parser.add_argument("--only-short", action="store_true", help="仅重跑竖屏切片")
+    parser.add_argument("--only-pack", action="store_true", help="仅打包 zip + 发布 manifest")
+    parser.add_argument("--preset", default="", help="工作流预设 tech_tutorial|short_commentary|game_commentary")
     parser.add_argument("--preflight", action="store_true", help="运行前检查环境")
     parser.add_argument("--force", action="store_true", help="忽略断点续跑，强制重新执行")
 
@@ -92,13 +98,28 @@ def main() -> None:
 
     if args.only_copy:
         if not args.job_dir:
-            parser.error("--only-copy 需要配合 --job-dir 指定已有任务目录")
+            parser.error("--only-copy 需要配合 --job-dir")
+        run_pipeline(args.job_dir, only_copy=True, job_dir=args.job_dir, preflight=args.preflight, preset=args.preset or None)
+        return
+
+    if args.only_pack:
+        if not args.job_dir:
+            parser.error("--only-pack 需要 --job-dir")
+        run_pipeline(args.job_dir, only_pack=True, job_dir=args.job_dir, preflight=args.preflight)
+        return
+
+    if args.only_dub or args.only_burn or args.only_short:
+        if not args.job_dir:
+            parser.error("分步重跑需要 --job-dir")
         run_pipeline(
             args.job_dir,
-            only_copy=True,
-            config_path=args.config,
+            only_dub=args.only_dub,
+            only_burn=args.only_burn,
+            only_short=args.only_short,
             job_dir=args.job_dir,
             preflight=args.preflight,
+            force=args.force,
+            preset=args.preset or None,
         )
         return
 
@@ -114,11 +135,13 @@ def main() -> None:
         skip_cut=args.skip_cut,
         skip_burn=args.skip_burn,
         skip_copy=args.skip_copy,
+        skip_dub=args.skip_dub,
         only_transcribe=args.only_transcribe,
         config_path=args.config,
         job_dir=args.job_dir,
         preflight=args.preflight,
         force=args.force,
+        preset=args.preset or None,
     )
 
 

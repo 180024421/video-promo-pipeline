@@ -2,10 +2,14 @@ config.yaml
 terminology.yaml
 output/
 watch_in/
+logs/
 __pycache__/
 *.pyc
 .venv/
 venv/
+tools/ffmpeg/
+tools/_ffmpeg_extract/
+tools/*.zip
 *.mp4
 *.mkv
 *.mov

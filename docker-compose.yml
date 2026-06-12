@@ -1,0 +1,12 @@
+services:
+  pipeline:
+    build: .
+    ports:
+      - "8766:8766"
+    volumes:
+      - ./output:/app/output
+      - ./watch_in:/app/watch_in
+      - ./config.yaml:/app/config.yaml
+    environment:
+      - WHISPER_DEVICE=cpu
+    restart: unless-stopped

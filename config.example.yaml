@@ -11,6 +11,9 @@ whisper:
   beam_size: 5           # 解码束宽（越大越准越慢）
   vad_filter: true       # 语音活动检测过滤
   initial_prompt: ""     # 可选前缀提示，如 "这是一段技术讲解视频"
+  chunk_minutes: 15      # 长视频分块转写，每块分钟数
+  chunk_if_longer_sec: 1800  # 超过 30 分钟启用分块
+  clear_gpu_cache: true      # 转写后释放 GPU 缓存
 
 # ──────────────────────────────────────────────
 # 粗剪去静音 (auto-editor)
@@ -62,6 +65,8 @@ terminology:
 clip_short:
   enabled: true
   duration_sec: 75
+  multi_clip_count: 1          # AI 选段时生成多个竖屏（1-5）
+  crop_mode: center            # center | upper | face（需 opencv）
   width: 1080
   height: 1920
   position: start              # start | middle | end | chapter_first | random | smart（AI 选最佳）
@@ -78,6 +83,7 @@ clip_short:
     enabled: false
     file: ""                   # 音频文件路径
     volume: 0.15               # 背景音量 0~1
+    ducking: true              # 人声出现时压低 BGM
   caption_style:               # 大字幕/花字
     enabled: false
     font_size: 56
@@ -97,7 +103,8 @@ cover:
   accent_color: "#4cc9f0"
   font_size_title: 56
   font_size_subtitle: 28
-  template: "default"           # default | tech | minimal | custom
+  use_video_frame: true        # 从视频截取帧作为封面底图
+  frame_position_ratio: 0.12   # 截取位置（视频时长比例）
   custom_template_path: ""      # 自定义模板图片路径
   overlay_icon: false           # 叠加技术图标（如 Java 咖啡杯）
   gradient_bg: true             # 渐变色背景
@@ -105,6 +112,123 @@ cover:
   gradient_to: "#16213e"
   add_qr_code: false            # 添加二维码（需 qrcode 库）
   qr_code_content: ""           # 二维码内容
+  ab_enabled: false             # 封面 A/B 多版本
+
+# ──────────────────────────────────────────────
+# 智能剪辑（LM Studio 规划高光片段，参考 ToonFlow / NarratoAI）
+# ──────────────────────────────────────────────
+smart_cut:
+  enabled: false
+  target_duration_sec: 90       # 目标成片时长
+  min_clip_sec: 3
+  style: "保留高潮、干货与结论，删除重复与长时间静音"
+
+# ──────────────────────────────────────────────
+# AI 配音解说（LM Studio 写稿 + Edge-TTS 合成）
+# ──────────────────────────────────────────────
+narration:
+  enabled: false                 # 开启后：LM 生成解说稿 → TTS 配音
+  mode: commentary               # commentary | read_aloud | summarize
+  style: "专业解说，口语化，节奏紧凑"
+  persona: "科技区 UP 主"
+  max_segment_chars: 80
+  target_duration_sec: 0         # 0=不限制；>0 时让 LM 压缩解说
+  use_lm: true                   # false=直接用转写文本配音
+  system_prompt: ""
+
+dubbing:
+  enabled: true
+  engine: edge-tts
+  voice: zh-CN-YunxiNeural       # 男声；女声可用 zh-CN-XiaoxiaoNeural
+  rate: "+0%"
+  volume: "+0%"
+  timeline_mode: continuous      # continuous=连续朗读 | segment=按时间轴插入
+  audio_mode: replace            # replace | mix | keep_original
+  original_volume: 0.15          # mix 模式原声音量
+  burn_narration_subtitles: true
+  sync_mode: auto              # auto | none | speed_video | pad_audio
+  gpt_sovits:
+    base_url: http://127.0.0.1:9880
+    text_language: zh
+    reference_audio: ""
+    prompt_text: ""
+  azure:
+    key: ""
+    region: eastasia
+    voice: zh-CN-YunxiNeural
+  voice_clone:
+    enabled: false
+    reference_audio: ""          # GPT-SoVITS 参考音频
+  ab_voices:                     # AB 双音色对比
+    - zh-CN-YunxiNeural
+    - zh-CN-XiaoxiaoNeural
+
+# ──────────────────────────────────────────────
+# 视觉理解剪辑（Qwen2-VL 等多模态，经 LM Studio）
+# ──────────────────────────────────────────────
+vision:
+  enabled: false
+  frame_count: 6
+  require_confirmation: false  # true 时 Web 批准后才应用视觉剪辑
+  model: ""                      # 留空用 lm_studio.model
+
+diarization:
+  enabled: false                 # 说话人标注（启发式或 pyannote）
+  speaker_gap_sec: 1.8
+  hf_token: ""                   # pyannote 可选 HuggingFace token
+
+# ──────────────────────────────────────────────
+# B-roll 素材插入
+# ──────────────────────────────────────────────
+broll:
+  enabled: false
+  assets_dir: assets/broll       # 放置 png/jpg，按文件名匹配 asset_hint
+
+# ──────────────────────────────────────────────
+# 多语言出海
+# ──────────────────────────────────────────────
+i18n:
+  enabled: false
+  target_language: en            # en | ja | ko
+  export_video: false            # 导出多语言字幕轨 mkv
+
+# ──────────────────────────────────────────────
+# 打包导出
+# ──────────────────────────────────────────────
+export:
+  zip_enabled: true
+  zip_include:
+    - "*.mp4"
+    - "*.srt"
+    - "*.txt"
+    - "*.md"
+    - "*.json"
+    - "*.png"
+
+# ──────────────────────────────────────────────
+# 一键发布（生成 manifest，对接开放平台）
+# ──────────────────────────────────────────────
+publish:
+  enabled: false
+  bilibili:
+    enabled: false
+    auto_upload: false           # OAuth 自动上传（需 client_id/secret/refresh_token）
+    client_id: ""
+    client_secret: ""
+    refresh_token: ""
+    access_key: ""
+    secret: ""
+  douyin:
+    enabled: false
+    client_key: ""
+    client_secret: ""
+
+# ──────────────────────────────────────────────
+# 工作流预设
+# ──────────────────────────────────────────────
+workflow:
+  preset: ""                     # tech_tutorial | short_commentary | game_commentary
+  gpu_schedule: true             # Whisper 后释放 GPU 给 LM Studio
 
 # ──────────────────────────────────────────────
 # LM Studio / OpenAI 兼容服务器
@@ -238,6 +362,7 @@ copy:
     # 一致性检查
     consistency_check: true          # 检查标题与内容是否一致
     deduplicate_titles: true         # 去重相似的标题候选
+    title_scoring_enabled: true      # 标题 A/B 评分排序
 
     # 转写文本处理
     transcript_max_length: 12000     # 送入 LM 的最大字符数
@@ -261,11 +386,15 @@ copy:
 # 流水线全局配置
 # ──────────────────────────────────────────────
 pipeline:
-  copy_source_video: false    # 是否复制原片到输出目录
-  resume: true                # 断点续跑
-  keep_temp_files: false      # 保留临时文件
-  parallel_steps: false       # 并行执行独立步骤（实验）
-  error_handling: "continue"  # stop | continue | skip_platform
+  copy_source_video: false
+  resume: true
+  keep_temp_files: false
+  parallel_steps: false
+  error_handling: "continue"
+  subtitle_mode: burn      # burn=烧录硬字幕 | soft=软字幕 mp4+srt 打包
+  plugins:                 # 插件 hook: after_transcribe | before_copy | after_pack
+    after_pack:
+      - src.plugins_builtin:log_job_summary
 
 # ──────────────────────────────────────────────
 # 批量处理
@@ -273,6 +402,7 @@ pipeline:
 batch:
   watch_dir: watch_in
   poll_interval_sec: 30
+  preset: ""               # 批量监控默认预设，可被 --preset 覆盖
   file_patterns: ["*.mp4", "*.mkv", "*.mov", "*.webm"]
   skip_existing: true         # 跳过已处理的文件
   parallel_jobs: 1            # 同时处理任务数（建议 1，避免 GPU 争抢）
@@ -284,8 +414,10 @@ web:
   host: 127.0.0.1
   port: 8766
   max_upload_size: 2147483648  # 2GB
+  max_concurrent_jobs: 1       # GPU 并发任务数
+  auth_token: ""                 # 非空时 API 需 X-Auth-Token 头
   enable_upload: true
-  enable_delete: false         # 允许删除任务
+  enable_delete: true          # 允许 Web 删除任务
   enable_preview: true         # 允许视频预览
   theme: "dark"                # dark | light
 
@@ -303,3 +435,32 @@ output:
   dir: output
   naming_template: "{stem}_{timestamp}"   # 输出目录命名模板
   organize_by_date: false                # 按日期分子目录
+
+# ──────────────────────────────────────────────
+# v3.4 成片质量 / 热点 / 片头片尾 / 敏感词
+# ──────────────────────────────────────────────
+video_quality:
+  preset: balanced           # fast | balanced | quality
+  crf: 23                    # 覆盖预设 CRF
+  ffmpeg_preset: medium        # x264 preset
+  audio_bitrate: 128k
+
+whisperx:
+  enabled: false             # 字级对齐（pip install whisperx）
+  model: small
+  device: cuda
+
+hot_topics:
+  enabled: false
+  platform: bilibili
+  custom: []
+  max_inject: 3
+
+intro_outro:
+  enabled: false
+  intro: assets/intro.mp4
+  outro: assets/outro.mp4
+
+sensitive_scan:
+  enabled: true
+  extra_words: []

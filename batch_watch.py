@@ -35,10 +35,12 @@ def main() -> None:
     parser.add_argument("--watch-dir", type=Path, default=None, help="监控目录，默认 config batch.watch_dir")
     parser.add_argument("--interval", type=int, default=None, help="轮询秒数")
     parser.add_argument("--once", action="store_true", help="只处理当前队列一次后退出")
+    parser.add_argument("--preset", type=str, default=None, help="工作流预设 tech_tutorial | short_commentary | game_commentary")
     args = parser.parse_args()
 
     cfg = load_config(args.config)
     bcfg = cfg.get("batch") or {}
+    preset = args.preset or bcfg.get("preset") or (cfg.get("workflow") or {}).get("preset") or None
     watch_dir = (args.watch_dir or ROOT / bcfg.get("watch_dir", "watch_in")).resolve()
     watch_dir.mkdir(parents=True, exist_ok=True)
     done_dir = watch_dir / ".done"
@@ -51,7 +53,7 @@ def main() -> None:
         for video in scan_pending(watch_dir, done_dir):
             console.print(f"\n[cyan]开始处理[/cyan] {video.name}")
             try:
-                run_pipeline(video, config_path=args.config, preflight=False)
+                run_pipeline(video, config_path=args.config, preflight=False, preset=preset or None)
                 (done_dir / f"{video.stem}.done").write_text("ok", encoding="utf-8")
             except Exception as e:
                 console.print(f"[red]失败[/red] {video.name}: {e}")

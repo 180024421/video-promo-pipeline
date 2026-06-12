@@ -10,6 +10,8 @@ from openai import OpenAI, APITimeoutError
 from rich.console import Console
 
 from .config_loader import ROOT
+from .chapters import build_chapters_from_segments
+from .copy_enhance import post_process_copy
 
 console = Console()
 
@@ -264,6 +266,8 @@ def _call_lm(
     for attempt in range(1, max_retries + 1):
         try:
             resp = client.chat.completions.create(**kwargs)
+            from .lm_usage import record_from_response
+            record_from_response(resp, label=platform)
             return resp.choices[0].message.content or ""
         except APITimeoutError as e:
             last_err = e
@@ -342,6 +346,7 @@ def generate_copy(
     out_dir: Path,
     *,
     chapter_outline: str = "",
+    segments: list[dict[str, Any]] | None = None,
     only_platforms: list[str] | None = None,
 ) -> dict[str, Any] | None:
     lcfg = cfg.get("lm_studio", {})
@@ -386,6 +391,15 @@ def generate_copy(
 
     if hooks:
         all_data["short_hooks"] = hooks
+
+    all_data = post_process_copy(all_data, cfg, transcript)
+
+    if _platform_enabled(cfg, "bilibili"):
+        ch = build_chapters_from_segments(segments or [], cfg) if segments else []
+        if ch and isinstance(all_data.get("bilibili"), dict):
+            all_data["bilibili"]["chapters"] = ch
+            lines = [f"{c['time']} {c['title']}" for c in ch]
+            (out_dir / "bilibili_chapters.txt").write_text("\n".join(lines), encoding="utf-8")
 
     # 写入各平台单独文件
     _write_outputs(all_data, out_dir, cfg)

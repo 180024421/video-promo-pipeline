@@ -1,0 +1,4 @@
+# 可选依赖（按需安装）
+reportlab>=4.0.0          # PDF 字幕 export_pdf
+opencv-python-headless>=4.8.0  # 人脸居中裁剪 crop_mode: face
+pyannote.audio>=3.1.0       # 说话人分离（需 HuggingFace token）

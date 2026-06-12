@@ -1,0 +1,25 @@
+name: 游戏解说
+description: 智能剪辑 + 混音解说 + BGM，保留部分游戏原声
+config:
+  smart_cut:
+    enabled: true
+    target_duration_sec: 120
+    style: "保留精彩操作、击杀、反转，删掉跑图和重复死亡"
+  narration:
+    enabled: true
+    mode: commentary
+    persona: "游戏解说 UP"
+    style: "幽默吐槽、节奏紧凑"
+  dubbing:
+    enabled: true
+    audio_mode: mix
+    original_volume: 0.25
+  clip_short:
+    enabled: true
+    smart_select:
+      enabled: true
+    bgm:
+      enabled: false
+  vision:
+    enabled: true
+    frame_count: 4

@@ -12,6 +12,12 @@ param(
     [switch]$SkipCut,
     [switch]$SkipBurn,
     [switch]$SkipCopy,
+    [switch]$SkipDub,
+    [switch]$OnlyDub,
+    [switch]$OnlyBurn,
+    [switch]$OnlyShort,
+    [switch]$OnlyPack,
+    [string]$Preset = "",
     [switch]$OnlyTranscribe,
     [switch]$OnlyCopy,
     [switch]$Force,
@@ -75,6 +81,27 @@ if ($Web) {
     exit $LASTEXITCODE
 }
 
+if ($OnlyPack) {
+    if (-not $JobDir) { Write-Host "OnlyPack 需要 -JobDir"; exit 1 }
+    python process.py --only-pack --job-dir $JobDir
+    exit $LASTEXITCODE
+}
+if ($OnlyDub) {
+    if (-not $JobDir) { Write-Host "OnlyDub 需要 -JobDir"; exit 1 }
+    python process.py --only-dub --job-dir $JobDir --force
+    exit $LASTEXITCODE
+}
+if ($OnlyBurn) {
+    if (-not $JobDir) { Write-Host "OnlyBurn 需要 -JobDir"; exit 1 }
+    python process.py --only-burn --job-dir $JobDir --force
+    exit $LASTEXITCODE
+}
+if ($OnlyShort) {
+    if (-not $JobDir) { Write-Host "OnlyShort 需要 -JobDir"; exit 1 }
+    python process.py --only-short --job-dir $JobDir --force
+    exit $LASTEXITCODE
+}
+
 if ($OnlyCopy) {
     if (-not $JobDir) {
         Write-Host "OnlyCopy 需要 -JobDir 指定任务目录"
@@ -83,10 +110,7 @@ if ($OnlyCopy) {
     $argsList = @("process.py", "--only-copy", "--job-dir", $JobDir)
     if ($Persona)   { $argsList += @("--persona", $Persona) }
     if ($Topic)     { $argsList += @("--topic", $Topic) }
-    if ($Style)     { $argsList += @("--style", $Style) }
-    if ($Tone)      { $argsList += @("--tone", $Tone) }
-    if ($Keywords)  { $argsList += @("--keywords", $Keywords) }
-    if ($Platforms) { $argsList += @("--platforms", $Platforms) }
+    if ($Preset)    { $argsList += @("--preset", $Preset) }
     python @argsList
     exit $LASTEXITCODE
 }
@@ -111,6 +135,7 @@ if ($JobDir)         { $argsList += @("--job-dir", $JobDir) }
 if ($SkipCut)        { $argsList += "--skip-cut" }
 if ($SkipBurn)       { $argsList += "--skip-burn" }
 if ($SkipCopy)       { $argsList += "--skip-copy" }
+if ($SkipDub)        { $argsList += "--skip-dub" }
 if ($OnlyTranscribe) { $argsList += "--only-transcribe" }
 if ($Force)          { $argsList += "--force" }
 if ($Preflight)      { $argsList += "--preflight" }
@@ -123,5 +148,6 @@ if ($Forbidden)      { $argsList += @("--forbidden", $Forbidden) }
 if ($Platforms)      { $argsList += @("--platforms", $Platforms) }
 if ($OnlyPlatform)   { $argsList += @("--only-platform", $OnlyPlatform) }
 if ($HookStyle)      { $argsList += @("--hook-style", $HookStyle) }
+if ($Preset)         { $argsList += @("--preset", $Preset) }
 
 python @argsList

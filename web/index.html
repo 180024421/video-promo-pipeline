@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>video-promo-pipeline</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<nav class="sidebar">
+  <div class="logo">
+    video-promo
+    <small>本地视频推广流水线</small>
+  </div>
+  <div class="nav-item active" data-page="dashboard"><span>📊</span> <span>仪表盘</span></div>
+  <div class="nav-item" data-page="upload"><span>📤</span> <span>上传处理</span></div>
+  <div class="nav-item" data-page="jobs"><span>📋</span> <span>任务列表</span></div>
+  <div class="nav-item" data-page="batch"><span>📦</span> <span>批量任务</span></div>
+  <div class="nav-item" data-page="config"><span>⚙️</span> <span>LM Studio</span></div>
+  <div class="nav-item" data-page="copy"><span>✍️</span> <span>文案配置</span></div>
+  <div class="nav-item" data-page="terminology"><span>📖</span> <span>术语表</span></div>
+  <div class="nav-item" data-page="assets"><span>📁</span> <span>素材库</span></div>
+</nav>
+
+<main class="main">
+
+  <!-- Dashboard -->
+  <section id="page-dashboard" class="page active">
+    <h1 class="page-title">仪表盘 <small id="app-version" style="font-size:0.65em;color:var(--text-muted)"></small></h1>
+    <div class="card" id="version-banner" style="display:none;background:rgba(233,69,96,0.15);border-color:var(--accent)">
+      <div class="card-title">新版本可用</div>
+      <p id="version-banner-text" style="font-size:0.85rem"></p>
+    </div>
+    <div class="card">
+      <div class="card-title">环境状态</div>
+      <div class="status-grid" id="status-grid">加载中...</div>
+    </div>
+    <div class="card" id="ffmpeg-install-card" style="display:none">
+      <div class="card-title">FFmpeg 未安装</div>
+      <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:1rem">
+        视频烧字幕、竖屏切片、配音混流都需要 FFmpeg。可一键下载安装到项目 <code>tools/ffmpeg/</code> 并自动写入配置。
+      </p>
+      <div id="ffmpeg-install-progress" style="display:none;margin-bottom:1rem">
+        <div style="font-size:0.85rem;color:var(--accent);margin-bottom:6px" id="ffmpeg-install-msg">准备中…</div>
+        <div style="height:6px;background:#333;border-radius:3px">
+          <div id="ffmpeg-install-bar" style="width:0%;height:100%;background:var(--accent);border-radius:3px;transition:width .3s"></div>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="btn btn-primary" id="btn-ffmpeg-install">一键下载并安装</button>
+        <a class="btn btn-secondary" id="btn-ffmpeg-download-zip" href="/api/ffmpeg/download-zip" download>下载 ZIP 安装包</a>
+      </div>
+    </div>
+    <div class="card" id="lmstudio-hint-card" style="display:none">
+      <div class="card-title">LM Studio 未连接</div>
+      <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:0.75rem">
+        智能剪辑、AI 解说、推广文案需要 LM Studio。请启动 LM Studio → 加载模型 → 开启 Local Server（默认端口 1234）。
+      </p>
+      <a class="btn btn-secondary btn-sm" href="https://lmstudio.ai/" target="_blank" rel="noopener">打开 LM Studio 官网</a>
+    </div>
+    <div class="card">
+      <div class="card-title">概览</div>
+      <p style="color:var(--text-muted);font-size:0.9rem">
+        已完成任务：<strong id="jobs-count" style="color:var(--accent)">-</strong> 个
+      </p>
+      <p style="color:var(--text-muted);font-size:0.85rem;margin-top:0.5rem">
+        流程：上传录屏 → Whisper 转写 → 粗剪/智能剪辑 → LM 解说稿 → TTS 配音 → 烧字幕 → 竖屏切片 → 文案
+      </p>
+      <div class="form-group" style="margin-top:1rem">
+        <label>API 鉴权 Token（留空不启用）</label>
+        <input type="password" id="auth-token-input" placeholder="与 config web.auth_token 一致">
+        <button type="button" class="btn btn-secondary btn-sm" id="save-auth-token" style="margin-top:6px">保存到浏览器</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Upload -->
+  <section id="page-upload" class="page">
+    <h1 class="page-title">上传处理</h1>
+    <form id="upload-form">
+      <div class="card">
+        <div class="drop-zone" id="drop-zone">
+          <div class="icon">🎬</div>
+          <div>拖拽视频到此处，或点击选择文件</div>
+          <div id="file-name" style="margin-top:0.5rem;color:var(--accent);font-size:0.85rem"></div>
+          <input type="file" id="file-input" accept="video/*" hidden>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">处理选项</div>
+        <div style="display:flex;gap:1.5rem;flex-wrap:wrap;margin-bottom:1rem">
+          <label class="checkbox-row"><input type="checkbox" id="skip-cut"> 跳过粗剪</label>
+          <label class="checkbox-row"><input type="checkbox" id="skip-burn"> 跳过烧录字幕</label>
+          <label class="checkbox-row"><input type="checkbox" id="skip-copy"> 跳过文案生成</label>
+          <label class="checkbox-row"><input type="checkbox" id="skip-dub"> 跳过 AI 配音</label>
+          <label class="checkbox-row"><input type="checkbox" id="only-transcribe"> 仅转写（不需 LM Studio）</label>
+        </div>
+        <div id="upload-lm-warn" class="hint-box" style="display:none;margin-bottom:1rem">
+          LM Studio 未连接。可勾选「仅转写」或「跳过文案生成」后继续。
+        </div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>人设（覆盖配置）</label>
+            <input type="text" id="upload-persona" placeholder="如：Java 全栈工程师">
+          </div>
+          <div class="form-group">
+            <label>主题（覆盖配置）</label>
+            <input type="text" id="upload-topic" placeholder="如：Spring Boot 3 实战">
+          </div>
+          <div class="form-group">
+            <label>关键词（逗号分隔）</label>
+            <input type="text" id="upload-keywords" placeholder="Java,Spring Boot,测试自动化">
+          </div>
+          <div class="form-group">
+            <label>生成平台</label>
+            <select id="upload-platforms">
+              <option value="">使用配置默认</option>
+              <option value="bilibili">仅 B 站</option>
+              <option value="xiaohongshu">仅小红书</option>
+              <option value="bilibili,xiaohongshu">B 站 + 小红书</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>工作流预设</label>
+            <select id="upload-preset">
+              <option value="">默认配置</option>
+              <option value="tech_tutorial">技术录屏教程</option>
+              <option value="short_commentary">短视频解说混剪</option>
+              <option value="game_commentary">游戏解说</option>
+            </select>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button type="submit" class="btn btn-primary" id="upload-btn">开始处理</button>
+        </div>
+      </div>
+    </form>
+  </section>
+
+  <!-- Jobs -->
+  <section id="page-jobs" class="page">
+    <h1 class="page-title">任务列表</h1>
+    <div class="job-list" id="job-list">加载中...</div>
+  </section>
+
+  <!-- Batch -->
+  <section id="page-batch" class="page">
+    <h1 class="page-title">批量任务（watch_in）</h1>
+    <div class="card">
+      <p class="hint-text">将视频放入 <code>watch_in/</code> 目录，点击下方按钮依次处理（自动排队）。</p>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="batch-process-btn">处理下一个</button>
+        <button class="btn btn-secondary" id="batch-refresh-btn">刷新列表</button>
+      </div>
+      <div id="batch-list" style="margin-top:1rem">加载中...</div>
+    </div>
+  </section>
+
+  <!-- LM Studio Config -->
+  <section id="page-config" class="page">
+    <h1 class="page-title">流水线配置</h1>
+    <div class="card">
+      <div class="config-section">
+        <h3>LM Studio</h3>
+        <div class="form-grid">
+          <div class="form-group">
+            <label><input type="checkbox" id="cfg-lm-enabled" checked> 启用文案生成</label>
+          </div>
+          <div class="form-group"></div>
+          <div class="form-group full">
+            <label>API 地址</label>
+            <input type="text" id="cfg-lm-url" placeholder="http://127.0.0.1:1234/v1">
+          </div>
+          <div class="form-group">
+            <label>模型名称（留空用当前加载模型）</label>
+            <input type="text" id="cfg-lm-model" placeholder="">
+          </div>
+          <div class="form-group">
+            <label>Temperature</label>
+            <input type="number" id="cfg-lm-temp" step="0.1" min="0" max="2" value="0.7">
+          </div>
+          <div class="form-group">
+            <label>Max Tokens</label>
+            <input type="number" id="cfg-lm-tokens" value="4096">
+          </div>
+          <div class="form-group">
+            <label>超时（秒）</label>
+            <input type="number" id="cfg-lm-timeout" value="120">
+          </div>
+          <div class="form-group">
+            <label>重试次数</label>
+            <input type="number" id="cfg-lm-retries" value="3">
+          </div>
+        </div>
+      </div>
+      <div class="config-section">
+        <h3>Whisper 转写</h3>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>模型</label>
+            <select id="cfg-whisper-model">
+              <option value="tiny">tiny（最快）</option>
+              <option value="base">base</option>
+              <option value="small" selected>small（推荐 8G 显存）</option>
+              <option value="medium">medium（质量优先）</option>
+              <option value="large-v2">large-v2</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>设备</label>
+            <select id="cfg-whisper-device">
+              <option value="cuda">cuda（GPU）</option>
+              <option value="cpu">cpu</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>语言</label>
+            <select id="cfg-whisper-lang">
+              <option value="zh">中文</option>
+              <option value="en">英文</option>
+              <option value="ja">日文</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>长视频分块（分钟）</label>
+            <input type="number" id="cfg-whisper-chunk-min" value="15" min="5" max="60">
+          </div>
+          <div class="form-group">
+            <label>超过多少秒启用分块</label>
+            <input type="number" id="cfg-whisper-chunk-threshold" value="1800" min="600">
+          </div>
+        </div>
+        <p class="hint-text">Whisper 模型保存后下次任务立即生效；8G 显存建议 small，质量优先用 medium。</p>
+        <div class="form-group" style="margin-top:0.5rem">
+          <label><input type="checkbox" id="cfg-whisper-clear-gpu" checked> 转写完成后释放 GPU 缓存</label>
+        </div>
+      </div>
+      <div class="config-section">
+        <h3>成片质量</h3>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>质量预设</label>
+            <select id="cfg-quality-preset">
+              <option value="fast">快速（体积小）</option>
+              <option value="balanced" selected>均衡（推荐）</option>
+              <option value="quality">高画质（体积大）</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="config-section">
+        <h3>工作流预设</h3>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>默认预设</label>
+            <select id="cfg-workflow-preset">
+              <option value="">无（使用下方逐项配置）</option>
+              <option value="tech_tutorial">技术录屏教程</option>
+              <option value="short_commentary">短视频解说混剪</option>
+              <option value="game_commentary">游戏解说</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>字幕模式</label>
+            <select id="cfg-subtitle-mode">
+              <option value="burn">烧录硬字幕</option>
+              <option value="soft">软字幕（mp4+srt 打包）</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="config-section">
+        <h3>AI 配音解说</h3>
+        <div class="form-grid">
+          <div class="form-group">
+            <label><input type="checkbox" id="cfg-narration-enabled"> 启用 AI 配音（LM 写稿 + Edge-TTS）</label>
+          </div>
+          <div class="form-group">
+            <label>解说模式</label>
+            <select id="cfg-narration-mode">
+              <option value="commentary">解说改写</option>
+              <option value="read_aloud">润色口播</option>
+              <option value="summarize">浓缩精华</option>
+            </select>
+          </div>
+          <div class="form-group full">
+            <label>TTS 引擎</label>
+            <select id="cfg-dub-engine">
+              <option value="edge-tts">Edge-TTS（免费）</option>
+              <option value="gpt-sovits">GPT-SoVITS</option>
+              <option value="azure">Azure TTS</option>
+            </select>
+          </div>
+          <div class="form-group full" id="cfg-dub-voice-row">
+            <label>TTS 音色（Edge-TTS）</label>
+            <select id="cfg-dub-voice">
+              <option value="zh-CN-YunxiNeural">云希（男声）</option>
+              <option value="zh-CN-XiaoxiaoNeural">晓晓（女声）</option>
+              <option value="zh-CN-YunjianNeural">云健（男声）</option>
+            </select>
+          </div>
+          <div class="form-group full" id="cfg-gptsovits-row" style="display:none">
+            <label>GPT-SoVITS API 地址</label>
+            <input type="text" id="cfg-gptsovits-url" placeholder="http://127.0.0.1:9880">
+          </div>
+          <div class="form-group full" id="cfg-voice-clone-row" style="display:none">
+            <label>语音克隆参考音频路径</label>
+            <input type="text" id="cfg-voice-clone-audio" placeholder="assets/voice/ref.wav">
+          </div>
+          <div class="form-group full" id="cfg-voice-clone-prompt-row" style="display:none">
+            <label>参考音频对应文本</label>
+            <input type="text" id="cfg-voice-clone-prompt" placeholder="参考音频说的内容">
+          </div>
+          <div class="form-group">
+            <label>音频模式</label>
+            <select id="cfg-dub-audio-mode">
+              <option value="replace">替换原声</option>
+              <option value="mix">与原声混音</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label><input type="checkbox" id="cfg-smart-cut-enabled"> 启用智能剪辑（LM 选高光）</label>
+          </div>
+          <div class="form-group">
+            <label>智能剪辑目标时长（秒）</label>
+            <input type="number" id="cfg-smart-cut-duration" value="90" min="30">
+          </div>
+          <div class="form-group">
+            <label><input type="checkbox" id="cfg-vision-enabled"> 视觉分析剪辑</label>
+          </div>
+          <div class="form-group">
+            <label><input type="checkbox" id="cfg-broll-enabled"> B-roll 素材叠加</label>
+          </div>
+          <div class="form-group">
+            <label><input type="checkbox" id="cfg-i18n-enabled"> 多语言翻译解说</label>
+          </div>
+        </div>
+      </div>
+      <div class="config-section">
+        <h3>竖屏 / BGM</h3>
+        <div class="form-grid">
+          <div class="form-group">
+            <label><input type="checkbox" id="cfg-short-enabled"> 启用竖屏切片</label>
+          </div>
+          <div class="form-group">
+            <label>竖屏时长（秒）</label>
+            <input type="number" id="cfg-short-duration" value="75">
+          </div>
+          <div class="form-group full">
+            <label>BGM 音频文件路径</label>
+            <input type="text" id="cfg-bgm-file" placeholder="assets/bgm/tech.mp3">
+          </div>
+          <div class="form-group">
+            <label><input type="checkbox" id="cfg-bgm-enabled"> 启用 BGM</label>
+          </div>
+          <div class="form-group">
+            <label><input type="checkbox" id="cfg-bgm-ducking" checked> BGM Ducking（人声压低背景）</label>
+          </div>
+          <div class="form-group">
+            <label>竖屏多段数量</label>
+            <input type="number" id="cfg-multi-clip" value="1" min="1" max="5">
+          </div>
+          <div class="form-group full">
+            <label>Azure TTS Key（可选）</label>
+            <input type="text" id="cfg-azure-key" placeholder="">
+          </div>
+          <div class="form-group">
+            <label>Azure Region</label>
+            <input type="text" id="cfg-azure-region" placeholder="eastasia">
+          </div>
+          <button type="button" class="btn btn-secondary btn-sm" id="btn-tts-test" style="margin-top:0.5rem">试播 TTS</button>
+          <audio id="tts-test-audio" controls style="display:none;margin-top:8px;width:100%"></audio>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="save-lm-config">保存配置</button>
+        <a class="btn btn-secondary" id="export-config-btn" href="/api/config/export">导出配置</a>
+        <label class="btn btn-secondary" style="cursor:pointer">
+          导入配置 <input type="file" id="import-config-file" accept=".yaml,.yml" hidden>
+        </label>
+      </div>
+    </div>
+  </section>
+
+  <!-- Terminology -->
+  <section id="page-terminology" class="page">
+    <h1 class="page-title">术语纠错表</h1>
+    <div class="card">
+      <p class="hint-text">Whisper 转写后自动替换。格式：错误词 → 正确词，每行一条。</p>
+      <textarea id="term-editor" class="preview-box" style="width:100%;min-height:280px;font-family:monospace"></textarea>
+      <div class="btn-row"><button class="btn btn-primary" id="save-terminology">保存术语表</button></div>
+    </div>
+  </section>
+
+  <!-- Assets -->
+  <section id="page-assets" class="page">
+    <h1 class="page-title">素材库</h1>
+    <div class="card">
+      <div class="form-grid">
+        <div class="form-group"><label>上传 BGM</label><input type="file" id="upload-bgm" accept="audio/*"></div>
+        <div class="form-group"><label>上传语音克隆参考</label><input type="file" id="upload-voice" accept="audio/*"></div>
+        <div class="form-group"><label>上传 B-roll 图片</label><input type="file" id="upload-broll" accept="image/*"></div>
+      </div>
+      <div id="assets-list" class="empty">加载中...</div>
+    </div>
+  </section>
+
+  <section id="page-copy" class="page">
+    <h1 class="page-title">文案配置</h1>
+
+    <div class="platform-card">
+      <h4>B 站 bilibili</h4>
+      <label class="checkbox-row" style="margin-bottom:0.75rem"><input type="checkbox" id="copy-bilibili-enabled" checked> 启用</label>
+      <div class="form-grid">
+        <div class="form-group full"><label>人设</label><input type="text" id="copy-bilibili-persona"></div>
+        <div class="form-group"><label>风格</label><input type="text" id="copy-bilibili-style" placeholder="干货分享 + 项目复盘"></div>
+        <div class="form-group"><label>语气</label><input type="text" id="copy-bilibili-tone" placeholder="专业且接地气"></div>
+        <div class="form-group full"><label>受众</label><input type="text" id="copy-bilibili-audience"></div>
+        <div class="form-group full"><label>关键词（逗号分隔）</label><input type="text" id="copy-bilibili-keywords"></div>
+        <div class="form-group"><label>标题最大字数</label><input type="number" id="copy-bilibili-max-title" value="40"></div>
+        <div class="form-group"><label>简介最大字数</label><input type="number" id="copy-bilibili-max-desc" value="500"></div>
+        <div class="form-group full"><label>行动号召 CTA</label><input type="text" id="copy-bilibili-cta"></div>
+      </div>
+    </div>
+
+    <div class="platform-card">
+      <h4>小红书 xiaohongshu</h4>
+      <label class="checkbox-row" style="margin-bottom:0.75rem"><input type="checkbox" id="copy-xiaohongshu-enabled" checked> 启用</label>
+      <div class="form-grid">
+        <div class="form-group full"><label>人设</label><input type="text" id="copy-xiaohongshu-persona"></div>
+        <div class="form-group"><label>风格</label><input type="text" id="copy-xiaohongshu-style" placeholder="笔记体"></div>
+        <div class="form-group"><label>语气</label><input type="text" id="copy-xiaohongshu-tone" placeholder="亲切真诚"></div>
+        <div class="form-group full"><label>受众</label><input type="text" id="copy-xiaohongshu-audience"></div>
+        <div class="form-group full"><label>关键词（逗号分隔）</label><input type="text" id="copy-xiaohongshu-keywords"></div>
+        <div class="form-group"><label>标题最大字数</label><input type="number" id="copy-xiaohongshu-max-title" value="20"></div>
+        <div class="form-group"><label>正文最大字数</label><input type="number" id="copy-xiaohongshu-max-body" value="1000"></div>
+        <div class="form-group full"><label>行动号召 CTA</label><input type="text" id="copy-xiaohongshu-cta"></div>
+      </div>
+    </div>
+
+    <div class="platform-card">
+      <h4>抖音 douyin</h4>
+      <label class="checkbox-row" style="margin-bottom:0.75rem"><input type="checkbox" id="copy-douyin-enabled"> 启用</label>
+      <div class="form-grid">
+        <div class="form-group full"><label>人设</label><input type="text" id="copy-douyin-persona"></div>
+        <div class="form-group full"><label>关键词</label><input type="text" id="copy-douyin-keywords"></div>
+      </div>
+    </div>
+
+    <div class="platform-card">
+      <h4>微信公众号 wechat_mp</h4>
+      <label class="checkbox-row" style="margin-bottom:0.75rem"><input type="checkbox" id="copy-wechat-enabled"> 启用</label>
+      <div class="form-grid">
+        <div class="form-group full"><label>人设</label><input type="text" id="copy-wechat-persona"></div>
+        <div class="form-group full"><label>关键词</label><input type="text" id="copy-wechat-keywords"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">通用设置</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>钩子风格</label>
+          <select id="copy-hook-style">
+            <option value="痛点反问式">痛点反问式</option>
+            <option value="结果前置式">结果前置式</option>
+            <option value="悬念式">悬念式</option>
+            <option value="数字式">数字式</option>
+            <option value="对比式">对比式</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>钩子候选数量</label>
+          <input type="number" id="copy-hook-count" value="3" min="1" max="10">
+        </div>
+        <div class="form-group full">
+          <label>全局禁用词（逗号分隔）</label>
+          <input type="text" id="copy-forbidden" placeholder="外挂,破解,盗版">
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="save-copy-config">保存文案配置</button>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- Job Detail Modal -->
+<div class="detail-overlay" id="detail-overlay">
+  <div class="detail-panel">
+    <div class="detail-header">
+      <div>
+        <h2 id="detail-title" style="font-size:1.1rem"></h2>
+        <div id="detail-status" style="margin-top:4px"></div>
+      </div>
+      <button class="btn btn-secondary btn-sm" id="detail-close">关闭</button>
+    </div>
+    <div class="detail-tabs">
+      <button class="tab-btn active" data-tab="files">文件</button>
+      <button class="tab-btn" data-tab="copy">推广文案</button>
+      <button class="tab-btn" data-tab="transcript">转写文本</button>
+      <button class="tab-btn" data-tab="timeline">解说时间线</button>
+      <button class="tab-btn" data-tab="steps">流水线步骤</button>
+      <button class="tab-btn" data-tab="segments">字幕校对</button>
+      <button class="tab-btn" data-tab="logs">日志</button>
+      <button class="tab-btn" data-tab="publish">发布包</button>
+      <button class="tab-btn" data-tab="vision">视觉方案</button>
+    </div>
+    <div id="tab-files" class="tab-content active"></div>
+    <div id="tab-copy" class="tab-content"></div>
+    <div id="tab-transcript" class="tab-content"></div>
+    <div id="tab-timeline" class="tab-content"></div>
+    <div id="tab-steps" class="tab-content"></div>
+    <div id="tab-segments" class="tab-content"></div>
+    <div id="tab-logs" class="tab-content"></div>
+    <div id="tab-publish" class="tab-content"></div>
+    <div id="tab-vision" class="tab-content"></div>
+    <div class="btn-row" style="margin-top:1rem;flex-wrap:wrap;gap:0.5rem">
+      <button class="btn btn-primary btn-sm" id="regen-copy-btn">重新文案</button>
+      <button class="btn btn-secondary btn-sm rerun-btn" data-step="transcribe">重跑转写</button>
+      <button class="btn btn-secondary btn-sm rerun-btn" data-step="cut">重跑粗剪</button>
+      <button class="btn btn-warning btn-sm rerun-btn" data-step="resume">从失败处继续</button>
+      <button class="btn btn-secondary btn-sm rerun-btn" data-step="dub">重跑配音</button>
+      <button class="btn btn-secondary btn-sm rerun-btn" data-step="burn">重跑字幕</button>
+      <button class="btn btn-secondary btn-sm rerun-btn" data-step="short">重跑竖屏</button>
+      <button class="btn btn-secondary btn-sm rerun-btn" data-step="pack">打包下载</button>
+      <button class="btn btn-secondary btn-sm" id="dub-ab-btn">AB 双音色</button>
+      <a class="btn btn-secondary btn-sm" id="download-zip-btn" href="#" style="display:none">下载 ZIP</a>
+      <button class="btn btn-secondary btn-sm" id="delete-job-btn" style="color:var(--error)">删除任务</button>
+    </div>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

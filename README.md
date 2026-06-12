@@ -1,8 +1,27 @@
-# video-promo-pipeline
+# video-promo-pipeline v3.3
 
-本地录屏视频的推广流水线 v2：**自动字幕 → 术语纠错 → 粗剪 → 烧录 → 竖屏切片 → LM Studio 文案 → 封面图**。
+本地录屏视频 AI 推广流水线：**转写 → 智能剪辑 → AI 配音 → 烧字幕/软字幕 → 竖屏切片 → 多平台文案**。
 
-面向技术向 UP 主（B 站 / 小红书 / 抖音 / 公众号）：你自己录屏，工具负责后半段。
+Web 面板支持 **FFmpeg 一键安装**、工作流预设、14 步进度时间线、分步重跑、Docker 部署。
+
+### v3.3 新增
+
+- API Token 鉴权、LM 用量统计
+- 说话人标注、人脸竖屏裁剪、视觉方案确认
+- AB 双音色、B 站 OAuth 上传、插件 hook、Docker GPU
+
+### v3.2 新增
+
+- 字幕 Web 校对、术语表、素材库上传、任务删除、排队等待
+- 多段竖屏、BGM ducking、视频截帧封面
+- 标题去重/评分、B 站章节、发布素材包一键复制
+
+### v3.1 新增
+
+- 配置页：预设、TTS 引擎、GPT-SoVITS、软字幕模式、BGM、长视频分块转写
+- 任务详情：流水线步骤时间线 + 解说分段表格编辑
+- 上传 LM Studio 预检 +「仅转写」模式
+- GPU 任务队列、`batch_watch --preset`
 
 ## 功能一览
 
@@ -13,7 +32,9 @@
 | 术语纠错 | terminology.yaml | 转写后批量替换（ADB、Spring Boot 等） |
 | 字幕后处理 | 内置 | 去口气、短句合并、自动换行 |
 | 粗剪 | [auto-editor](https://github.com/WyattBlue/auto-editor) | 删除长静音 |
-| 烧字幕 | FFmpeg | 硬字幕成片 |
+| **智能剪辑** | LM Studio | AI 规划高光片段（参考 ToonFlow/NarratoAI） |
+| **AI 配音** | LM Studio + Edge-TTS | 解说稿生成 + 自动配音 |
+| 烧字幕 | FFmpeg | 硬字幕成片（支持配音字幕） |
 | 竖屏切片 | FFmpeg | 9:16 短视频片段（小红书/抖音） |
 | 文案 | LM Studio OpenAI API | 多平台文案（B站、小红书、抖音、公众号） |
 | 封面 | Pillow | 简易文字封面图 |
@@ -42,7 +63,10 @@ cd video-promo-pipeline
 
 # 3. 启动 LM Studio，加载 Qwen2.5-7B-Instruct 等，开启 Local Server
 
-# 4. 处理视频
+# 4. 处理视频（基础：字幕+粗剪+文案）
+.\run.ps1 -Video "D:\recordings\your_video.mp4"
+
+# 5. 开启 AI 配音解说（需先在 config.yaml 设置 narration.enabled: true）
 .\run.ps1 -Video "D:\recordings\your_video.mp4"
 ```
 
@@ -64,6 +88,10 @@ output/demo_20260611_203000/
   bilibili_description.txt           # B 站简介（直接粘贴）
   xiaohongshu_post.txt               # 小红书正文（直接粘贴）
   cover.png
+  narration.json                   # AI 解说稿（开启 narration 时）
+  narration.srt                    # 配音字幕
+  narration_audio.mp3              # 合成配音音轨
+  *_dubbed.mp4                     # 配音成片
   summary.json
 ```
 
@@ -84,6 +112,9 @@ output/demo_20260611_203000/
 
 # 只生成 B 站文案
 .\run.ps1 -Video demo.mp4 -OnlyPlatform "bilibili" -HookStyle "数字式"
+
+# 跳过配音，只要字幕
+.\run.ps1 -Video demo.mp4 -SkipDub
 
 # 断点续跑（默认开启）
 .\run.ps1 -Video demo.mp4 -JobDir output\demo_20260611_203000
@@ -108,6 +139,33 @@ output/demo_20260611_203000/
 ```powershell
 copy config.example.yaml config.yaml
 copy terminology.example.yaml terminology.yaml
+```
+
+### AI 配音解说 (`config.yaml` → `narration` + `dubbing`)
+
+参考 [ToonFlow](https://github.com/HBAI-Ltd/Toonflow-app) / [NarratoAI](https://github.com/linyqh/NarratoAI) 工作流：**转写 → LM 写解说稿 → TTS 配音 → 烧字幕**。
+
+```yaml
+narration:
+  enabled: true                  # 开启 AI 配音流水线
+  mode: commentary               # commentary=解说改写 | read_aloud=润色口播 | summarize=浓缩
+  style: "专业解说，口语化"
+  persona: "科技区 UP 主"
+  use_lm: true                   # false=直接用转写文本配音
+
+dubbing:
+  voice: zh-CN-YunxiNeural       # Edge-TTS 音色
+  timeline_mode: continuous      # continuous=连续朗读 | segment=按时间轴
+  audio_mode: replace            # replace=替换原声 | mix=混音 | keep_original
+  burn_narration_subtitles: true
+```
+
+### 智能剪辑 (`config.yaml` → `smart_cut`)
+
+```yaml
+smart_cut:
+  enabled: true
+  target_duration_sec: 90          # 剪成 90 秒精华版
 ```
 
 ### LM Studio 配置 (`config.yaml` → `lm_studio`)

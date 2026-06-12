@@ -1,0 +1,30 @@
+name: 短视频解说混剪
+description: 60-90 秒精华 + AI 解说配音 + 花字竖屏，适合抖音/小红书
+config:
+  smart_cut:
+    enabled: true
+    target_duration_sec: 90
+  narration:
+    enabled: true
+    mode: commentary
+    style: "节奏快、信息密度高、第三人称解说"
+  dubbing:
+    enabled: true
+    timeline_mode: continuous
+    audio_mode: replace
+  clip_short:
+    enabled: true
+    duration_sec: 75
+    position: smart
+    smart_select:
+      enabled: true
+    caption_style:
+      enabled: true
+    watermark:
+      enabled: true
+      text: "@你的账号"
+  copy:
+    douyin:
+      enabled: true
+    xiaohongshu:
+      enabled: true
