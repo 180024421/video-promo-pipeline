@@ -1,41 +1,93 @@
-# 复制为 config.yaml 后修改
+# 复制为 config.yaml 后按需修改
 
+# ──────────────────────────────────────────────
+# 语音转写 (Whisper)
+# ──────────────────────────────────────────────
 whisper:
-  model: small           # 4060Ti 8G 建议 small；质量优先用 medium
-  device: cuda
-  compute_type: float16
-  language: zh
+  model: small           # 4060Ti 8G 建议 small；质量优先用 medium / large-v2
+  device: cuda           # cuda | cpu
+  compute_type: float16  # float16 | float32 | int8
+  language: zh           # zh | en | ja 等
+  beam_size: 5           # 解码束宽（越大越准越慢）
+  vad_filter: true       # 语音活动检测过滤
+  initial_prompt: ""     # 可选前缀提示，如 "这是一段技术讲解视频"
 
+# ──────────────────────────────────────────────
+# 粗剪去静音 (auto-editor)
+# ──────────────────────────────────────────────
 auto_editor:
   enabled: true
   silent_threshold: 0.04
   min_silence_duration: 0.35
+  margin: 0.2            # 剪切前后留白秒数
+  video_codec: "libx264" # 视频编码器
+  audio_codec: "aac"     # 音频编码器
 
+# ──────────────────────────────────────────────
+# FFmpeg 路径
+# ──────────────────────────────────────────────
 ffmpeg:
-  path: ""
+  path: ""               # 留空自动从 PATH 查找；可填绝对路径如 "C:/ffmpeg/bin/ffmpeg.exe"
 
+# ──────────────────────────────────────────────
+# 字幕样式与后处理
+# ──────────────────────────────────────────────
 subtitle:
   font_size: 22
   margin_v: 28
   font_name: Microsoft YaHei
-  max_chars_per_line: 18
-  merge_min_duration: 1.2
-  remove_fillers: true
-  export_ass: true
-  export_vtt: true
+  max_chars_per_line: 18        # 单行最大字符数
+  merge_min_duration: 1.2       # 短于该秒数的句段合并
+  remove_fillers: true          # 去除“嗯、啊、那个”
+  filler_words: ["嗯", "啊", "呃", "那个", "就是", "这个"]
+  export_ass: true              # 导出 ASS 字幕
+  export_vtt: true              # 导出 WebVTT
+  export_pdf: false             # 导出文本为 PDF（需安装 reportlab）
+  highlight_keywords: true      # 关键术语高亮
+  keyword_highlight_color: "#FFD700"  # 高亮颜色（ASS 用）
+  line_spacing: 1.4             # 行间距倍数
 
+# ──────────────────────────────────────────────
+# 专业术语纠错
+# ──────────────────────────────────────────────
 terminology:
   enabled: true
-  file: terminology.yaml
+  file: terminology.yaml         # 自定义替换表
+  auto_extract: false            # 是否自动从 transcript 提取潜在缩写词
+  case_sensitive: false          # 大小写敏感
 
+# ──────────────────────────────────────────────
+# 竖屏切片（短视频/小红书）
+# ──────────────────────────────────────────────
 clip_short:
   enabled: true
   duration_sec: 75
   width: 1080
   height: 1920
-  # start | middle | chapter_first
-  position: start
+  position: start              # start | middle | end | chapter_first | random | smart（AI 选最佳）
+  smart_select:                # AI 选取高光片段
+    enabled: false
+    min_clip_duration: 30
+    max_clip_duration: 120
+  watermark:                   # 水印设置
+    enabled: false
+    text: "@你的账号"
+    position: "bottom-right"   # top-left | top-right | bottom-left | bottom-right
+    opacity: 0.6
+  bgm:                         # 背景音乐（可选）
+    enabled: false
+    file: ""                   # 音频文件路径
+    volume: 0.15               # 背景音量 0~1
+  caption_style:               # 大字幕/花字
+    enabled: false
+    font_size: 56
+    color: "#FFFFFF"
+    stroke_color: "#000000"
+    stroke_width: 4
 
+# ──────────────────────────────────────────────
+# 封面图生成
+# ──────────────────────────────────────────────
 cover:
   enabled: true
   width: 1280
@@ -43,34 +95,211 @@ cover:
   bg_color: "#1a1a2e"
   text_color: "#eaeaea"
   accent_color: "#4cc9f0"
+  font_size_title: 56
+  font_size_subtitle: 28
+  template: "default"           # default | tech | minimal | custom
+  custom_template_path: ""      # 自定义模板图片路径
+  overlay_icon: false           # 叠加技术图标（如 Java 咖啡杯）
+  gradient_bg: true             # 渐变色背景
+  gradient_from: "#1a1a2e"
+  gradient_to: "#16213e"
+  add_qr_code: false            # 添加二维码（需 qrcode 库）
+  qr_code_content: ""           # 二维码内容
 
+# ──────────────────────────────────────────────
+# LM Studio / OpenAI 兼容服务器
+# ──────────────────────────────────────────────
 lm_studio:
   enabled: true
   base_url: http://127.0.0.1:1234/v1
   api_key: lm-studio
-  model: ""
+  model: ""                     # 留空使用当前加载模型
   temperature: 0.7
-  json_retry: true
+  max_tokens: 4096              # 最大输出 token
+  timeout: 120                  # 请求超时秒数
+  max_retries: 3                # 最大重试次数
+  stream: false                 # 是否流式
+  json_retry: true              # JSON 解析失败时自动重试
+  seed: 42                      # 确定性种子（留空随机）
+  top_p: 0.9                    # nucleus sampling
+  frequency_penalty: 0.0        # 频率惩罚
+  presence_penalty: 0.0         # 存在惩罚
+  system_prompt: ""             # 全局系统提示词（覆盖默认）
+  fallback_models:              # 备用模型列表（按优先级尝试）
+    - ""
+  verbose: false                # 打印完整请求/响应
 
+# ──────────────────────────────────────────────
+# 推广文案配置（核心增强）
+# ──────────────────────────────────────────────
 copy:
-  persona: "Java 全栈与自动化测试工程师，分享真实项目实践（已脱敏）"
-  topic: ""
-  prompt_file: prompts/bilibili_java.md
-  platforms:
-    - bilibili
-    - xiaohongshu
+  enabled: true
 
+  # ━━━━━━━━━━━━━━━━━━━━━━━━ B站 ━━━━━━━━━━━━━━━━━━━━━━━━
+  bilibili:
+    enabled: true
+    persona: "Java 全栈与自动化测试工程师，分享真实项目实践（已脱敏）"
+    style: "干货分享 + 项目复盘"
+    tone: "专业且接地气，不说教"
+    audience: "后端开发、测试工程师、计算机专业学生"
+    content_type: "教程+实录"    # 教程 | 实战 | 复盘 | 测评 | 双号
+    avg_video_length: "10-30分钟"
+    keywords: ["Java", "Spring Boot", "测试自动化", "项目实战"]
+    hot_topics_reference: true    # 参考热门话题
+    max_title_length: 40          # B站标题最多 80 字，建议 40 以内
+    max_description_length: 500   # 简介最大字數
+    max_tags: 10
+    chapters_enabled: true        # 生成章节时间轴
+    timeline_format: "mm:ss"      # 时间轴格式
+    emoji_usage: false            # B站少用 emoji
+    call_to_action: "三连+关注，持续更新脱敏项目实战"
+    pinned_comment: ""            # 置顶评论模板（生成推荐语）
+    forbidden_words:
+      - "外挂"
+      - "搬砖"
+      - "挂机赚钱"
+      - "破解"
+      - "辅助牟利"
+    prompt_override: ""           # 完全覆盖平台 prompt（高级）
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━ 小红书 ━━━━━━━━━━━━━━━━━━━━━━━
+  xiaohongshu:
+    enabled: true
+    persona: "从后端开发转型技术博主的 UP，分享搞钱+技术干货"
+    style: "笔记体，像给朋友发消息"
+    tone: "亲切、真诚、带点幽默"
+    audience: "想搞副业的程序员、转行的职场人、技术小白"
+    content_type: "干货笔记"
+    keywords: ["程序员副业", "自动化测试", "远程接单"]
+    hot_topics_reference: true
+    max_title_length: 20          # 小红书标题建议 20 字内
+    max_body_length: 1000         # 正文建议 300-1000 字
+    max_topics: 10                # 话题标签数
+    emoji_usage: true             # 小红书适合 emoji
+    emoji_set: ["💻", "🔥", "⚡", "📌", "✅", "🎯", "🚀"]
+    numbered_tips: true           # 使用“3个技巧”“5步搞定”等结构
+    highlight_boxes: true         # 关键信息用框或表情强调
+    call_to_action: "关注我，持续分享程序员搞钱干货"
+    include_cover_tip: true       # 生成封面图配图文案建议
+    forbidden_words:
+      - "外挂"
+      - "搬砖"
+      - "暴富"
+      - "躺赚"
+    prompt_override: ""
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━ 抖音 ━━━━━━━━━━━━━━━━━━━━━━━━
+  douyin:
+    enabled: false                # 默认关闭，需要时打开
+    persona: "技术圈最会整活的程序员"
+    style: "短平快，开头抓人"
+    tone: "节奏快、信息密度高"
+    audience: "25-35岁职场人"
+    max_title_length: 25
+    max_body_length: 300
+    hook_first_3_seconds: true     # 强调前 3 秒钩子
+    hash_tags: ["#程序员", "#技术分享"]
+    emoji_usage: true
+    call_to_action: "点赞关注，下期更精彩"
+    prompt_override: ""
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━ 微信公众号 ━━━━━━━━━━━━━━━━━━━━━
+  wechat_mp:
+    enabled: false
+    persona: "专注于技术分享与项目复盘"
+    style: "深度长文，有结构"
+    tone: "专业、理性"
+    audience: "程序员和技术管理者"
+    max_title_length: 30
+    max_body_length: 3000
+    md_formatting: true           # 生成 Markdown 格式
+    include_toc: true             # 生成目录
+    include_author_info: true     # 文末作者介绍
+    call_to_action: "点击关注，获取更多干货"
+    prompt_override: ""
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━ 通用文案配置 ━━━━━━━━━━━━━━━━━━━
+  general:
+    # 前 3 秒钩子
+    short_hook_enabled: true
+    short_hook_style: "痛点反问式"   # 痛点反问式 | 结果前置式 | 悬念式 | 数字式 | 对比式
+    short_hook_count: 3              # 生成几个钩子供选
+
+    # 章节摘要
+    chapter_summary_enabled: true
+    max_chapters: 12                 # 最大章节数
+    min_chapter_duration: 30         # 最短章节时长（秒）
+
+    # 热门话题
+    hot_topic_reference: true
+    hot_topic_source: "auto"         # auto | 自定义列表
+    custom_hot_topics: []            # 自定义热门话题列表
+
+    # 一致性检查
+    consistency_check: true          # 检查标题与内容是否一致
+    deduplicate_titles: true         # 去重相似的标题候选
+
+    # 转写文本处理
+    transcript_max_length: 12000     # 送入 LM 的最大字符数
+    transcript_truncate_strategy: "head_tail"  # head | tail | head_tail | smarter
+
+    # 输出格式
+    export_formats:
+      - "json"
+      - "markdown"
+      - "txt"
+
+    # 全局禁用词（所有平台通用）
+    global_forbidden_words:
+      - "外挂"
+      - "破解"
+      - "盗版"
+      - "翻墙"
+      - "黑产"
+
+# ──────────────────────────────────────────────
+# 流水线全局配置
+# ──────────────────────────────────────────────
 pipeline:
-  copy_source_video: false
-  resume: true
+  copy_source_video: false    # 是否复制原片到输出目录
+  resume: true                # 断点续跑
+  keep_temp_files: false      # 保留临时文件
+  parallel_steps: false       # 并行执行独立步骤（实验）
+  error_handling: "continue"  # stop | continue | skip_platform
 
+# ──────────────────────────────────────────────
+# 批量处理
+# ──────────────────────────────────────────────
 batch:
   watch_dir: watch_in
   poll_interval_sec: 30
+  file_patterns: ["*.mp4", "*.mkv", "*.mov", "*.webm"]
+  skip_existing: true         # 跳过已处理的文件
+  parallel_jobs: 1            # 同时处理任务数（建议 1，避免 GPU 争抢）
 
+# ──────────────────────────────────────────────
+# Web 面板
+# ──────────────────────────────────────────────
 web:
   host: 127.0.0.1
   port: 8766
+  max_upload_size: 2147483648  # 2GB
+  enable_upload: true
+  enable_delete: false         # 允许删除任务
+  enable_preview: true         # 允许视频预览
+  theme: "dark"                # dark | light
+
+# ──────────────────────────────────────────────
+# 日志与输出
+# ──────────────────────────────────────────────
+logging:
+  level: "INFO"               # DEBUG | INFO | WARNING | ERROR
+  file: "logs/pipeline.log"   # 留空不写入文件
+  format: "%(asctime)s [%(levelname)s] %(message)s"
+  max_bytes: 10485760         # 10MB
+  backup_count: 5
 
 output:
   dir: output
+  naming_template: "{stem}_{timestamp}"   # 输出目录命名模板
+  organize_by_date: false                # 按日期分子目录

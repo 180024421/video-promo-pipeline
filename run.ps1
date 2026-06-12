@@ -18,7 +18,17 @@ param(
     [switch]$Preflight,
     [switch]$Setup,
     [switch]$Watch,
-    [switch]$Web
+    [switch]$Web,
+    # 运行时文案覆盖
+    [string]$Persona = "",
+    [string]$Topic = "",
+    [string]$Style = "",
+    [string]$Tone = "",
+    [string]$Keywords = "",
+    [string]$Forbidden = "",
+    [string]$Platforms = "",
+    [string]$OnlyPlatform = "",
+    [string]$HookStyle = ""
 )
 
 $Root = $PSScriptRoot
@@ -70,7 +80,14 @@ if ($OnlyCopy) {
         Write-Host "OnlyCopy 需要 -JobDir 指定任务目录"
         exit 1
     }
-    python process.py --only-copy --job-dir $JobDir
+    $argsList = @("process.py", "--only-copy", "--job-dir", $JobDir)
+    if ($Persona)   { $argsList += @("--persona", $Persona) }
+    if ($Topic)     { $argsList += @("--topic", $Topic) }
+    if ($Style)     { $argsList += @("--style", $Style) }
+    if ($Tone)      { $argsList += @("--tone", $Tone) }
+    if ($Keywords)  { $argsList += @("--keywords", $Keywords) }
+    if ($Platforms) { $argsList += @("--platforms", $Platforms) }
+    python @argsList
     exit $LASTEXITCODE
 }
 
@@ -79,9 +96,9 @@ if (-not $Video) {
 用法:
   .\run.ps1 -Setup
   .\run.ps1 -Video demo.mp4
-  .\run.ps1 -Video demo.mp4 -SkipCut -SkipBurn
-  .\run.ps1 -Video demo.mp4 -OnlyTranscribe
-  .\run.ps1 -OnlyCopy -JobDir output\xxx
+  .\run.ps1 -Video demo.mp4 -Persona "资深后端" -Topic "Spring Boot" -Keywords "Java,接口"
+  .\run.ps1 -Video demo.mp4 -SkipCut -SkipBurn -OnlyPlatform "bilibili"
+  .\run.ps1 -OnlyCopy -JobDir output\xxx -Persona "资深后端"
   .\run.ps1 -Preflight
   .\run.ps1 -Watch
   .\run.ps1 -Web
@@ -90,12 +107,21 @@ if (-not $Video) {
 }
 
 $argsList = @("process.py", $Video)
-if ($JobDir) { $argsList += @("--job-dir", $JobDir) }
-if ($SkipCut) { $argsList += "--skip-cut" }
-if ($SkipBurn) { $argsList += "--skip-burn" }
-if ($SkipCopy) { $argsList += "--skip-copy" }
+if ($JobDir)         { $argsList += @("--job-dir", $JobDir) }
+if ($SkipCut)        { $argsList += "--skip-cut" }
+if ($SkipBurn)       { $argsList += "--skip-burn" }
+if ($SkipCopy)       { $argsList += "--skip-copy" }
 if ($OnlyTranscribe) { $argsList += "--only-transcribe" }
-if ($Force) { $argsList += "--force" }
-if ($Preflight) { $argsList += "--preflight" }
+if ($Force)          { $argsList += "--force" }
+if ($Preflight)      { $argsList += "--preflight" }
+if ($Persona)        { $argsList += @("--persona", $Persona) }
+if ($Topic)          { $argsList += @("--topic", $Topic) }
+if ($Style)          { $argsList += @("--style", $Style) }
+if ($Tone)           { $argsList += @("--tone", $Tone) }
+if ($Keywords)       { $argsList += @("--keywords", $Keywords) }
+if ($Forbidden)      { $argsList += @("--forbidden", $Forbidden) }
+if ($Platforms)      { $argsList += @("--platforms", $Platforms) }
+if ($OnlyPlatform)   { $argsList += @("--only-platform", $OnlyPlatform) }
+if ($HookStyle)      { $argsList += @("--hook-style", $HookStyle) }
 
 python @argsList

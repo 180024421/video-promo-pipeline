@@ -5,10 +5,61 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from typing import Any
 
+from src.config_loader import load_config
 from src.pipeline import run_pipeline
 from src.preflight import run_preflight
-from src.config_loader import load_config
+
+
+def _merge_runtime_config(cfg: dict[str, Any], args: argparse.Namespace) -> dict[str, Any]:
+    """将 CLI 参数覆盖到配置中。"""
+    copy_cfg = cfg.setdefault("copy", {})
+    if args.persona:
+        for p in ("bilibili", "xiaohongshu", "douyin", "wechat_mp"):
+            if p in copy_cfg:
+                copy_cfg[p]["persona"] = args.persona
+        if "persona" not in copy_cfg:
+            copy_cfg["persona"] = args.persona
+    if args.topic:
+        for p in ("bilibili", "xiaohongshu", "douyin", "wechat_mp"):
+            if p in copy_cfg:
+                copy_cfg[p]["content_type"] = args.topic
+        if "topic" not in copy_cfg:
+            copy_cfg["topic"] = args.topic
+    if args.style:
+        for p in ("bilibili", "xiaohongshu", "douyin", "wechat_mp"):
+            if p in copy_cfg:
+                copy_cfg[p]["style"] = args.style
+    if args.tone:
+        for p in ("bilibili", "xiaohongshu", "douyin", "wechat_mp"):
+            if p in copy_cfg:
+                copy_cfg[p]["tone"] = args.tone
+    if args.keywords:
+        kw = [k.strip() for k in args.keywords.split(",")]
+        for p in ("bilibili", "xiaohongshu", "douyin", "wechat_mp"):
+            if p in copy_cfg:
+                copy_cfg[p]["keywords"] = kw
+        if "keywords" not in copy_cfg:
+            copy_cfg["keywords"] = kw
+    if args.forbidden:
+        fb = [w.strip() for w in args.forbidden.split(",")]
+        gen = copy_cfg.setdefault("general", {})
+        gen.setdefault("global_forbidden_words", []).extend(fb)
+    if args.platforms:
+        enabled = [p.strip().lower() for p in args.platforms.split(",")]
+        for p in ("bilibili", "xiaohongshu", "douyin", "wechat_mp"):
+            if p in copy_cfg:
+                copy_cfg[p]["enabled"] = p in enabled
+    if args.only_platform:
+        enabled = [p.strip().lower() for p in args.only_platform.split(",")]
+        for p in ("bilibili", "xiaohongshu", "douyin", "wechat_mp"):
+            if p in copy_cfg:
+                copy_cfg[p]["enabled"] = p in enabled
+    if args.hook_style:
+        gen = copy_cfg.setdefault("general", {})
+        gen["short_hook_style"] = args.hook_style
+    return cfg
 
 
 def main() -> None:
@@ -19,11 +70,25 @@ def main() -> None:
     parser.add_argument("--skip-cut", action="store_true", help="跳过 Auto-Editor 粗剪")
     parser.add_argument("--skip-burn", action="store_true", help="跳过 FFmpeg 烧录字幕")
     parser.add_argument("--skip-copy", action="store_true", help="跳过 LM Studio 文案生成")
-    parser.add_argument("--only-transcribe", action="store_true", help="仅转写字幕，不粗剪/烧录/文案")
+    parser.add_argument("--only-transcribe", action="store_true", help="仅转写字幕")
     parser.add_argument("--only-copy", action="store_true", help="仅根据已有 transcript 生成文案")
-    parser.add_argument("--preflight", action="store_true", help="运行前检查 FFmpeg / LM Studio 等")
-    parser.add_argument("--force", action="store_true", help="忽略断点续跑，强制重新执行各步骤")
+    parser.add_argument("--preflight", action="store_true", help="运行前检查环境")
+    parser.add_argument("--force", action="store_true", help="忽略断点续跑，强制重新执行")
+
+    # 运行时文案覆盖
+    parser.add_argument("--persona", default="", help="覆盖文案人设")
+    parser.add_argument("--topic", default="", help="覆盖主题/内容定位")
+    parser.add_argument("--style", default="", help="覆盖风格")
+    parser.add_argument("--tone", default="", help="覆盖语气")
+    parser.add_argument("--keywords", default="", help="覆盖关键词，逗号分隔")
+    parser.add_argument("--forbidden", default="", help="追加禁用词，逗号分隔")
+    parser.add_argument("--platforms", default="", help="启用哪些平台，逗号分隔如 bilibili,xiaohongshu")
+    parser.add_argument("--only-platform", default="", help="仅生成指定平台文案")
+    parser.add_argument("--hook-style", default="", help="钩子风格：痛点反问式|结果前置式|悬念式|数字式|对比式")
     args = parser.parse_args()
+
+    cfg = load_config(args.config)
+    cfg = _merge_runtime_config(cfg, args)
 
     if args.only_copy:
         if not args.job_dir:
@@ -38,7 +103,6 @@ def main() -> None:
         return
 
     if args.preflight and not args.video:
-        cfg = load_config(args.config)
         ok = run_preflight(cfg)
         raise SystemExit(0 if ok else 1)
 
