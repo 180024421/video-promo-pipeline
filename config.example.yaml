@@ -265,6 +265,13 @@ lm_studio:
   verbose: false                # 打印完整请求/响应
 
 # ──────────────────────────────────────────────
+# lmstudio-finetune 微调联动（data/finetune_bridge.json）
+# ──────────────────────────────────────────────
+finetune:
+  auto_apply_bridge: true       # 启动时自动使用 bridge 推荐模型
+  bridge_file: data/finetune_bridge.json
+
+# ──────────────────────────────────────────────
 # 推广文案配置（核心增强）
 # ──────────────────────────────────────────────
 copy:

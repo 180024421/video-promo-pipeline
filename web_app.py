@@ -256,6 +256,12 @@ def index() -> HTMLResponse:
     return HTMLResponse(html)
 
 
+@app.get("/api/finetune-bridge")
+def api_finetune_bridge():
+    from src.finetune_bridge import bridge_summary
+    return JSONResponse(bridge_summary())
+
+
 @app.get("/api/health")
 def api_health():
     return JSONResponse(check_health(load_config()))
