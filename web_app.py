@@ -68,6 +68,19 @@ from src.lm_usage import estimate_cost, load_stats
 from src.pipeline import run_pipeline
 from src.presets import list_presets
 from src.preflight import run_preflight
+from src.scene_detect import detect_scene_changes
+from src.audio_enhance import apply_audio_enhance
+from src.pipeline_viz import pipeline_dag_json, webhook_trigger
+from src.config_wizard import build_wizard_template, apply_wizard_answers
+from src.publish_analytics import analytics_summary, record_analytics
+from src.cloud_storage import upload_job_output
+from src.finetune_deep import check_bridge_ready, export_feedback_for_training
+from src.subtitle_editor import (
+    delete_segment, load_subtitle_segments, merge_segments,
+    save_subtitle_segments, split_segment, update_segment_text, update_segment_time,
+)
+from src.video_player import generate_hls, generate_thumbnail
+from src.persistence import list_jobs as db_list_jobs, step_timing_aggregate
 from src.progress_tracker import load_progress
 from src.publish_pack import build_publish_pack, save_segments_and_srt
 from src.service_checks import check_gpt_sovits, check_lm_studio_detail
@@ -1159,6 +1172,165 @@ def api_analytics_lm_cost():
     stats = load_stats()
     cost = estimate_cost(stats, load_config())
     return JSONResponse({**stats, **cost})
+
+
+@app.get("/api/analytics/publish")
+def api_publish_analytics():
+    return JSONResponse(analytics_summary())
+
+
+@app.post("/api/analytics/publish")
+async def api_record_publish(request: Request):
+    body = await request.json()
+    r = record_analytics(
+        body.get("job", ""),
+        body.get("platform", "unknown"),
+        **{k: v for k, v in body.items() if k not in ("job", "platform")},
+    )
+    return JSONResponse(r)
+
+
+@app.get("/api/pipeline-dag")
+def api_pipeline_dag():
+    return JSONResponse({"dag": pipeline_dag_json()})
+
+
+@app.get("/api/finetune-bridge/deep")
+def api_finetune_deep():
+    return JSONResponse(check_bridge_ready())
+
+
+@app.post("/api/finetune-bridge/export-feedback")
+async def api_export_feedback(request: Request):
+    body = await request.json()
+    out = ROOT / (body.get("out", "data/finetune_feedback_train.jsonl"))
+    r = export_feedback_for_training(out, min_score=float(body.get("min_score", 0.6)))
+    return JSONResponse(r)
+
+
+@app.get("/api/config-wizard")
+def api_config_wizard():
+    return JSONResponse(build_wizard_template())
+
+
+@app.post("/api/config-wizard")
+async def api_apply_wizard(request: Request):
+    body = await request.json()
+    answers = body.get("answers", {})
+    cfg = load_config()
+    new_cfg = apply_wizard_answers(cfg, answers)
+    save_config(new_cfg)
+    return JSONResponse({"ok": True})
+
+
+@app.get("/api/jobs/{job_name}/segments")
+def api_job_segments(job_name: str):
+    job_dir = _safe_job_path(str(job_name))
+    if not job_dir:
+        return JSONResponse({"error": "任务不存在"}, status_code=404)
+    segs = load_subtitle_segments(job_dir / "segments.json")
+    return JSONResponse({"segments": segs})
+
+
+@app.put("/api/jobs/{job_name}/segments")
+async def api_save_segments(job_name: str, request: Request):
+    job_dir = _safe_job_path(str(job_name))
+    if not job_dir:
+        return JSONResponse({"error": "任务不存在"}, status_code=404)
+    body = await request.json()
+    segs = body.get("segments", [])
+    save_subtitle_segments(job_dir / "segments.json", segs)
+    return JSONResponse({"ok": True})
+
+
+@app.put("/api/jobs/{job_name}/segments/{index}/merge/{other}")
+def api_merge_segments(job_name: str, index: int, other: int):
+    job_dir = _safe_job_path(str(job_name))
+    if not job_dir:
+        return JSONResponse({"error": "任务不存在"}, status_code=404)
+    segs = load_subtitle_segments(job_dir / "segments.json")
+    segs = merge_segments(index, other, segs)
+    save_subtitle_segments(job_dir / "segments.json", segs)
+    return JSONResponse({"ok": True})
+
+
+@app.put("/api/jobs/{job_name}/segments/{index}/split")
+async def api_split_segment(job_name: str, index: int, request: Request):
+    body = await request.json()
+    at_sec = float(body.get("at_sec", 0))
+    job_dir = _safe_job_path(str(job_name))
+    if not job_dir:
+        return JSONResponse({"error": "任务不存在"}, status_code=404)
+    segs = load_subtitle_segments(job_dir / "segments.json")
+    segs = split_segment(index, at_sec, segs)
+    save_subtitle_segments(job_dir / "segments.json", segs)
+    return JSONResponse({"ok": True})
+
+
+@app.get("/api/jobs/{job_name}/scenes")
+def api_job_scenes(job_name: str, threshold: float = 0.3):
+    job_dir = _safe_job_path(str(job_name))
+    if not job_dir:
+        return JSONResponse({"error": "任务不存在"}, status_code=404)
+    vid = next((p for p in job_dir.iterdir() if p.suffix.lower() in {".mp4", ".mkv", ".mov"}), None)
+    if not vid:
+        return JSONResponse({"scenes": []})
+    scenes = detect_scene_changes(load_config(), vid, threshold=threshold)
+    return JSONResponse({"scenes": scenes})
+
+
+@app.get("/api/jobs/{job_name}/hls")
+def api_job_hls(job_name: str):
+    job_dir = _safe_job_path(str(job_name))
+    if not job_dir:
+        return JSONResponse({"error": "任务不存在"}, status_code=404)
+    vid = next((p for p in job_dir.iterdir() if p.suffix.lower() in {".mp4", ".mkv", ".mov"}), None)
+    if not vid:
+        return JSONResponse({"error": "无视频文件"}, status_code=404)
+    hls_dir = job_dir / "hls"
+    info = generate_hls(vid, hls_dir)
+    return JSONResponse(info)
+
+
+@app.get("/api/jobs/{job_name}/enhance-audio")
+def api_enhance_audio(job_name: str):
+    job_dir = _safe_job_path(str(job_name))
+    if not job_dir:
+        return JSONResponse({"error": "任务不存在"}, status_code=404)
+    vid = next((p for p in job_dir.iterdir() if p.suffix.lower() in {".mp4", ".mkv", ".mov"}), None)
+    if not vid:
+        return JSONResponse({"error": "无视频文件"}, status_code=404)
+    out = job_dir / f"{vid.stem}_enhanced.mp4"
+    apply_audio_enhance(load_config(), vid, out)
+    return JSONResponse({"ok": True, "output": str(out)})
+
+
+@app.post("/api/jobs/{job_name}/cloud-upload")
+def api_cloud_upload(job_name: str):
+    job_dir = _safe_job_path(str(job_name))
+    if not job_dir:
+        return JSONResponse({"error": "任务不存在"}, status_code=404)
+    r = upload_job_output(job_dir, load_config())
+    return JSONResponse(r)
+
+
+@app.post("/api/webhook-trigger")
+async def api_webhook_trigger(request: Request):
+    body = await request.json()
+    r = webhook_trigger(load_config(), body)
+    return JSONResponse(r)
+
+
+@app.get("/api/jobs/{job_name}/preview")
+def api_job_preview(job_name: str, time_sec: float = 5.0):
+    job_dir = _safe_job_path(str(job_name))
+    if not job_dir:
+        return JSONResponse({"error": "任务不存在"}, status_code=404)
+    vid = next((p for p in job_dir.iterdir() if p.suffix.lower() in {".mp4", ".mkv", ".mov"}), None)
+    if not vid:
+        return JSONResponse({"error": "无视频文件"}, status_code=404)
+    thumb = generate_thumbnail(vid, job_dir / "preview.jpg", time_sec=time_sec)
+    return FileResponse(str(thumb))
 
 
 @app.get("/api/jobs/{job_name}/qc")

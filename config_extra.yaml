@@ -1,0 +1,18 @@
+# 云存储配置（S3/OSS/COS 兼容）
+cloud_storage:
+  enabled: false
+  backend: s3                 # s3 | oss | cos
+  endpoint: ""
+  bucket: "video-promo"
+  access_key: ""
+  secret_key: ""
+  public_base_url: ""          # 公开访问前缀
+
+# Webhook 触发配置
+webhook_trigger:
+  enabled: false
+  secret: ""                  # 外部调用时需匹配此密钥
+
+# 自动云上传
+pipeline:
+  auto_cloud_upload: false    # 打包后自动上传云存储

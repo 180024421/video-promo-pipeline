@@ -55,6 +55,10 @@ from .subtitle_burn import burn_subtitles
 from .transcribe import build_chapter_outline, transcribe_video
 from .vision_cut import enhance_clip_plan_with_vision
 from .whisperx_align import align_segments_whisperx
+from .scene_detect import export_scenes_json
+from .audio_enhance import apply_audio_enhance
+from .cloud_storage import upload_job_output
+from .persistence import add_step_timing, upsert_job
 
 console = Console()
 
@@ -475,6 +479,27 @@ def run_pipeline(
     )
     run_plugins("after_pack", {"job_dir": out_dir, "summary": summary}, cfg)
     notify_job_event("job_done", out_dir.name, {"total_seconds": timing.get("total_seconds"), "step": "完成"}, cfg)
+    try:
+        for name, elapsed in (timing.get("steps") or {}).items():
+            add_step_timing(out_dir.name, name, float(elapsed) if isinstance(elapsed, (int, float, str)) else 0.0)
+        upsert_job(out_dir.name, status="done", step=_last_step[0])
+    except Exception:
+        pass
+    try:
+        if bool((cfg.get("pipeline") or {}).get("auto_cloud_upload") or bool((cfg.get("cloud_storage") or {}).get("enabled"))):
+            upload_job_output(out_dir, cfg)
+    except Exception:
+        pass
+    try:
+        export_scenes_json(video_path, out_dir, cfg)
+    except Exception:
+        pass
+    try:
+        final_vid = _find_work_video(out_dir, video_path.stem)
+        if final_vid:
+            apply_audio_enhance(cfg, final_vid, out_dir / f"{video_path.stem}_enhanced.mp4")
+    except Exception:
+        pass
     if zip_path:
         summary["zip"] = str(zip_path)
     if pub:

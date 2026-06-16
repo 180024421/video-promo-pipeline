@@ -21,6 +21,9 @@
   <div class="nav-item" data-page="copy"><span>✍️</span> <span>文案配置</span></div>
   <div class="nav-item" data-page="terminology"><span>📖</span> <span>术语表</span></div>
   <div class="nav-item" data-page="analytics"><span>📈</span> <span>数据看板</span></div>
+  <div class="nav-item" data-page="publish-stats"><span>📊</span> <span>发布分析</span></div>
+  <div class="nav-item" data-page="preview"><span>🎬</span> <span>视频预览</span></div>
+  <div class="nav-item" data-page="editor"><span>✂️</span> <span>字幕编辑</span></div>
   <div class="nav-item" data-page="tools"><span>🛠</span> <span>工具</span></div>
   <div class="nav-item" data-page="assets"><span>📁</span> <span>素材库</span></div>
   <div class="sidebar-footer" style="margin-top:auto;padding:1rem">
@@ -426,6 +429,43 @@
     <div class="card"><div id="dashboard-stats" class="hint-text">加载中...</div></div>
     <div class="card"><div class="card-title">发布日历</div><div id="dashboard-schedules"></div></div>
     <div class="card"><div class="card-title">任务列表</div><div id="dashboard-jobs"></div></div>
+  </section>
+
+  <!-- 发布分析 -->
+  <section id="page-publish-stats" class="page">
+    <h1 class="page-title">发布分析</h1>
+    <div class="card"><h2>播放数据</h2><div id="publish-stats" class="hint-text">加载中...</div></div>
+    <div class="card"><h2>录入数据</h2>
+      <div class="form-grid">
+        <div class="form-group"><label>平台</label><select id="ps-platform"><option>bilibili</option><option>douyin</option></select></div>
+        <div class="form-group"><label>任务</label><input id="ps-job"/></div>
+        <div class="form-group"><label>播放量</label><input id="ps-views" type="number" value="0"/></div>
+        <div class="form-group"><label>点赞</label><input id="ps-likes" type="number" value="0"/></div>
+      </div>
+      <button type="button" class="btn btn-primary btn-sm" id="btn-ps-record">记录</button>
+    </div>
+  </section>
+
+  <!-- 视频预览 -->
+  <section id="page-preview" class="page">
+    <h1 class="page-title">视频预览</h1>
+    <div class="form-row">
+      <select id="preview-job" style="min-width:180px"><option value="">选择任务...</option></select>
+      <button type="button" class="btn btn-primary btn-sm" id="btn-generate-hls">生成 HLS 流</button>
+      <button type="button" class="btn btn-secondary btn-sm" id="btn-enhance-audio">音频增强</button>
+    </div>
+    <div class="card"><video id="preview-player" controls style="width:100%;max-height:500px;display:none"></video></div>
+    <div class="card"><div id="preview-scenes" class="hint-text"></div></div>
+  </section>
+
+  <!-- 字幕编辑 -->
+  <section id="page-editor" class="page">
+    <h1 class="page-title">字幕编辑</h1>
+    <div class="form-row">
+      <select id="editor-job" style="min-width:180px"><option value="">选择任务...</option></select>
+      <button type="button" class="btn btn-primary btn-sm" id="btn-editor-load">加载字幕</button>
+    </div>
+    <div id="editor-segments" class="hint-text"></div>
   </section>
 
   <!-- Tools -->
