@@ -81,6 +81,15 @@ from src.subtitle_editor import (
 )
 from src.video_player import generate_hls, generate_thumbnail
 from src.persistence import list_jobs as db_list_jobs, step_timing_aggregate
+from src.job_index import job_created, job_done, job_failed, job_running, list_indexed_jobs
+from src.platform_stats import sync_all_jobs, sync_job_stats
+from src.sensitive_report import build_compliance_report
+from src.batch_dag import load_batch_plan, next_runnable, save_batch_plan, batch_plan_from_watch, BatchNode
+from src.vertical_series import export_series_pack, plan_vertical_series
+from src.subtitle_collab import acquire_lock, release_lock, list_locks
+from src.compare_player import list_video_variants
+from src.video_player import generate_thumbnails_sprite
+from src.tenant import resolve_output_dir
 from src.progress_tracker import load_progress
 from src.publish_pack import build_publish_pack, save_segments_and_srt
 from src.service_checks import check_gpt_sovits, check_lm_studio_detail
@@ -88,12 +97,26 @@ from src.terminology import load_terminology, save_terminology, terminology_path
 
 WEB_DIR = ROOT / "web"
 STATIC_DIR = WEB_DIR / "static"
-APP_VERSION = "3.8.0"
+APP_VERSION = "3.9.0"
 LATEST_VERSION_URL = "https://raw.githubusercontent.com/180024421/video-promo-pipeline/main/VERSION"
 
 ASSETS_DIR = ROOT / "assets"
 
+_tenant_ctx = threading.local()
+
+
+def _current_tenant() -> str:
+    return getattr(_tenant_ctx, "id", "") or ""
+
+
+class TenantMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: StarletteRequest, call_next):
+        _tenant_ctx.id = request.headers.get("X-Tenant-ID", "") or request.query_params.get("tenant", "")
+        return await call_next(request)
+
+
 app = FastAPI(title="video-promo-pipeline", version=APP_VERSION)
+app.add_middleware(TenantMiddleware)
 _cfg = load_config()
 _jobs_lock = threading.Lock()
 _running: dict[str, dict[str, Any]] = {}
@@ -136,6 +159,10 @@ def _reload_cfg() -> dict[str, Any]:
 
 
 def _output_base() -> Path:
+    tcfg = _cfg.get("tenant") or {}
+    tid = _current_tenant()
+    if tcfg.get("enabled") and tid:
+        return resolve_output_dir(_cfg, tid)
     return ROOT / _cfg.get("output", {}).get("dir", "output")
 
 
@@ -266,6 +293,7 @@ def index() -> HTMLResponse:
     html = html_path.read_text(encoding="utf-8")
     html = html.replace("/static/style.css", f"/static/style.css?v={APP_VERSION}")
     html = html.replace("/static/app.js", f"/static/app.js?v={APP_VERSION}")
+    html = html.replace("/static/v39.js", f"/static/v39.js?v={APP_VERSION}")
     return HTMLResponse(html)
 
 
@@ -582,16 +610,18 @@ def api_job_detail(job_name: str):
     return JSONResponse(detail)
 
 
-@app.get("/api/jobs/{job_name}/files/{filename}")
-def api_job_file(job_name: str, filename: str):
+@app.get("/api/jobs/{job_name}/files/{filepath:path}")
+def api_job_file(job_name: str, filepath: str):
     job_dir = _safe_job_path(job_name)
     if not job_dir:
         return JSONResponse({"error": "任务不存在"}, status_code=404)
-    fp = (job_dir / filename).resolve()
+    fp = (job_dir / filepath).resolve()
     if not str(fp).startswith(str(job_dir.resolve())) or not fp.is_file():
         return JSONResponse({"error": "文件不存在"}, status_code=404)
-    mime, _ = mimetypes.guess_type(str(fp))
-    return FileResponse(fp, media_type=mime or "application/octet-stream", filename=fp.name)
+    ext = fp.suffix.lower()
+    mime_map = {".m3u8": "application/vnd.apple.mpegurl", ".ts": "video/mp2t"}
+    mime = mime_map.get(ext) or mimetypes.guess_type(str(fp))[0] or "application/octet-stream"
+    return FileResponse(fp, media_type=mime, filename=fp.name)
 
 
 @app.get("/api/presets")
@@ -625,6 +655,10 @@ def _run_job_async(job_name: str, fn=None, *, spec: dict[str, Any] | None = None
         clear_cancel(job_name)
         with _jobs_lock:
             _running[job_name] = {"status": "running", "step": "初始化", "progress": 0}
+        try:
+            job_running(job_name, "初始化")
+        except Exception:
+            pass
         try:
             def on_step(step: str):
                 with _jobs_lock:
@@ -661,6 +695,10 @@ def _run_job_async(job_name: str, fn=None, *, spec: dict[str, Any] | None = None
             with _jobs_lock:
                 state = {"status": "done", "step": "完成", "progress": 100, "job": job_name}
                 _running[job_name] = state
+            try:
+                job_done(job_name)
+            except Exception:
+                pass
             broadcast_sync({"type": "job_progress", **state})
         except Exception as e:
             with _jobs_lock:
@@ -673,6 +711,11 @@ def _run_job_async(job_name: str, fn=None, *, spec: dict[str, Any] | None = None
                     "job": job_name,
                 }
                 _running[job_name] = state
+            try:
+                if not cancelled:
+                    job_failed(job_name, str(e))
+            except Exception:
+                pass
             broadcast_sync({"type": "job_progress", **state})
             if not cancelled:
                 notify_job_event("job_error", job_name, {"error": str(e)}, load_config())
@@ -815,6 +858,10 @@ async def upload(
 
     job_name = f"{dest.stem}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     job_dir = output_dir(_cfg, job_name)
+    try:
+        job_created(job_name)
+    except Exception:
+        pass
 
     spec = {
         "job_name": job_name,
@@ -1317,8 +1364,27 @@ def api_cloud_upload(job_name: str):
 @app.post("/api/webhook-trigger")
 async def api_webhook_trigger(request: Request):
     body = await request.json()
-    r = webhook_trigger(load_config(), body)
-    return JSONResponse(r)
+    cfg = load_config()
+    r = webhook_trigger(cfg, body)
+    if not r.get("ok"):
+        return JSONResponse(r, status_code=400)
+    video_path = body.get("video_path", "")
+    if not video_path or not Path(video_path).exists():
+        return JSONResponse({"ok": False, "detail": "video_path 无效"}, status_code=400)
+    vp = Path(video_path)
+    job_name = body.get("job_name") or f"{vp.stem}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    job_dir = output_dir(cfg, job_name)
+    preset = body.get("preset", "")
+    try:
+        job_created(job_name)
+    except Exception:
+        pass
+
+    def _run(cb):
+        run_pipeline(vp, job_dir=job_dir, preset=preset or None, on_step=cb, cfg_override=body.get("params"))
+
+    _run_job_async(job_name, _run)
+    return JSONResponse({**r, "job_name": job_name, "queued": True})
 
 
 @app.get("/api/jobs/{job_name}/preview")
@@ -1510,6 +1576,138 @@ async def api_team_create_token(request: Request):
 def api_offline_status():
     cfg = load_config()
     return JSONResponse({"lm_studio": lm_studio_reachable(cfg), "offline_cfg": apply_offline_fallback(cfg).get("pipeline", {})})
+
+
+@app.get("/api/jobs/db")
+def api_jobs_db(status: str = "", limit: int = 100):
+    return JSONResponse(list_indexed_jobs(status=status or None, limit=limit))
+
+
+@app.get("/api/analytics/step-timing")
+def api_step_timing_agg():
+    return JSONResponse(step_timing_aggregate())
+
+
+@app.post("/api/analytics/sync-stats")
+def api_sync_stats(limit: int = 20):
+    r = sync_all_jobs(_output_base(), load_config(), limit=limit)
+    return JSONResponse(r)
+
+
+@app.get("/api/jobs/{job_name}/variants")
+def api_job_variants(job_name: str):
+    job_dir = _safe_job_path(job_name)
+    if not job_dir:
+        return JSONResponse({"error": "任务不存在"}, status_code=404)
+    return JSONResponse({"variants": list_video_variants(job_dir)})
+
+
+@app.get("/api/jobs/{job_name}/sprite")
+def api_job_sprite(job_name: str, interval: int = 10):
+    job_dir = _safe_job_path(job_name)
+    if not job_dir:
+        return JSONResponse({"error": "任务不存在"}, status_code=404)
+    vid = next((p for p in job_dir.iterdir() if p.suffix.lower() in {".mp4", ".mkv", ".mov"}), None)
+    if not vid:
+        return JSONResponse({"error": "无视频"}, status_code=404)
+    info = generate_thumbnails_sprite(vid, job_dir / "sprite")
+    return JSONResponse(info)
+
+
+@app.get("/api/jobs/{job_name}/compliance")
+def api_job_compliance(job_name: str):
+    job_dir = _safe_job_path(job_name)
+    if not job_dir:
+        return JSONResponse({"error": "任务不存在"}, status_code=404)
+    return JSONResponse(build_compliance_report(job_dir, load_config()))
+
+
+@app.get("/api/batch/plan")
+def api_batch_plan():
+    nodes = load_batch_plan()
+    return JSONResponse({"nodes": [{"video": n.video, "job_name": n.job_name, "priority": n.priority,
+                                      "depends_on": n.depends_on, "status": n.status, "preset": n.preset} for n in nodes]})
+
+
+@app.post("/api/batch/plan/from-watch")
+def api_batch_plan_from_watch(preset: str = ""):
+    cfg = load_config()
+    watch = ROOT / (cfg.get("batch") or {}).get("watch_dir", "watch_in")
+    nodes = batch_plan_from_watch(watch, preset=preset)
+    save_batch_plan(nodes)
+    return JSONResponse({"count": len(nodes)})
+
+
+@app.post("/api/batch/plan/run-next")
+def api_batch_run_next():
+    nodes = load_batch_plan()
+    n = next_runnable(nodes)
+    if not n:
+        return JSONResponse({"ok": False, "detail": "无可运行任务"})
+    vp = Path(n.video)
+    if not vp.exists():
+        return JSONResponse({"ok": False, "detail": f"视频不存在: {n.video}"})
+    job_name = n.job_name or f"{vp.stem}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    n.job_name = job_name
+    n.status = "running"
+    save_batch_plan(nodes)
+    job_dir = output_dir(load_config(), job_name)
+
+    def _run(cb):
+        run_pipeline(vp, job_dir=job_dir, preset=n.preset or None, on_step=cb)
+        nodes2 = load_batch_plan()
+        for node in nodes2:
+            if node.job_name == job_name:
+                node.status = "done"
+        save_batch_plan(nodes2)
+
+    _run_job_async(job_name, _run)
+    return JSONResponse({"ok": True, "job_name": job_name})
+
+
+@app.post("/api/jobs/{job_name}/series")
+def api_job_series(job_name: str):
+    job_dir = _safe_job_path(job_name)
+    if not job_dir:
+        return JSONResponse({"error": "任务不存在"}, status_code=404)
+    vid = next((p for p in job_dir.iterdir() if p.suffix.lower() in {".mp4", ".mkv", ".mov"} and "_short_" not in p.stem), None)
+    if not vid:
+        return JSONResponse({"error": "无视频"}, status_code=404)
+    transcript = (job_dir / "transcript.txt").read_text(encoding="utf-8") if (job_dir / "transcript.txt").exists() else ""
+    seg_data = json.loads((job_dir / "segments.json").read_text(encoding="utf-8")) if (job_dir / "segments.json").exists() else {}
+    segments = seg_data.get("segments", []) if isinstance(seg_data, dict) else []
+    r = export_series_pack(job_dir, vid, transcript, segments, load_config())
+    return JSONResponse(r)
+
+
+@app.post("/api/jobs/{job_name}/segments/{index}/lock")
+async def api_segment_lock(job_name: str, index: int, request: Request):
+    body = await request.json()
+    user = body.get("user", "anonymous")
+    r = acquire_lock(job_name, index, user)
+    return JSONResponse(r)
+
+
+@app.delete("/api/jobs/{job_name}/segments/{index}/lock")
+async def api_segment_unlock(job_name: str, index: int, request: Request):
+    body = await request.json()
+    release_lock(job_name, index, body.get("user", "anonymous"))
+    return JSONResponse({"ok": True})
+
+
+@app.get("/api/jobs/{job_name}/locks")
+def api_segment_locks(job_name: str):
+    return JSONResponse({"locks": list_locks(job_name)})
+
+
+@app.get("/api/tenant")
+def api_tenant_info():
+    cfg = load_config()
+    return JSONResponse({
+        "enabled": bool((cfg.get("tenant") or {}).get("enabled")),
+        "current": _current_tenant(),
+        "base": str(_output_base()),
+    })
 
 
 @app.put("/api/jobs/{job_name}/chapters")

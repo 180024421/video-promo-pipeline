@@ -9,7 +9,12 @@ from typing import Any
 from .ffmpeg_utils import resolve_ffmpeg
 
 
-def apply_audio_enhance(cfg: dict[str, Any], input_video: Path, output_video: Path, *, denoise: bool = True, normalize: bool = True) -> Path:
+def apply_audio_enhance(cfg: dict[str, Any], input_video: Path, output_video: Path, *, denoise: bool = True, normalize: bool = True) -> Path | None:
+    acfg = cfg.get("audio_enhance") or {}
+    if not acfg.get("enabled", False):
+        return None
+    denoise = acfg.get("denoise", denoise)
+    normalize = acfg.get("normalize", normalize)
     ffmpeg = resolve_ffmpeg(cfg)
     filters: list[str] = []
     video_cfg = cfg.get("video_quality") or {}

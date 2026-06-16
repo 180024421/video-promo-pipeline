@@ -55,10 +55,11 @@ from .subtitle_burn import burn_subtitles
 from .transcribe import build_chapter_outline, transcribe_video
 from .vision_cut import enhance_clip_plan_with_vision
 from .whisperx_align import align_segments_whisperx
-from .scene_detect import export_scenes_json
+from .scene_detect import detect_scene_changes, export_scenes_json
 from .audio_enhance import apply_audio_enhance
 from .cloud_storage import upload_job_output
 from .persistence import add_step_timing, upsert_job
+from .job_index import job_created, job_done, job_failed, job_running
 
 console = Console()
 
@@ -193,6 +194,11 @@ def run_pipeline(
     timer = StepTimer(out_dir)
     jlog = get_job_logger(out_dir, out_dir.name)
     log_job(out_dir, f"开始流水线 from_step={from_step or 'full'}")
+    try:
+        job_created(out_dir.name)
+        job_running(out_dir.name, "初始化")
+    except Exception:
+        pass
     _last_step = [""]
 
     def _tick(name: str) -> None:
@@ -292,7 +298,18 @@ def run_pipeline(
         if resume and smart_path.exists() and not force:
             work_video = smart_path
         else:
-            clips = run_lm_step(cfg, lambda: generate_clip_plan(tx["transcript"], tx["segments"], cfg, out_dir))
+            scene_hints: list[float] = []
+            if (cfg.get("scene_detect") or {}).get("use_in_smart_cut", True):
+                try:
+                    scenes = detect_scene_changes(cfg, work_video)
+                    scene_hints = [float(s["time_sec"]) for s in scenes]
+                    export_scenes_json(work_video, out_dir, cfg)
+                except Exception:
+                    pass
+            clips = run_lm_step(
+                cfg,
+                lambda: generate_clip_plan(tx["transcript"], tx["segments"], cfg, out_dir, scene_hints=scene_hints or None),
+            )
             if (cfg.get("vision") or {}).get("enabled", False):
                 _tick("视觉分析")
                 vclips = enhance_clip_plan_with_vision(work_video, tx["transcript"], tx["segments"], cfg, out_dir)
@@ -483,6 +500,7 @@ def run_pipeline(
         for name, elapsed in (timing.get("steps") or {}).items():
             add_step_timing(out_dir.name, name, float(elapsed) if isinstance(elapsed, (int, float, str)) else 0.0)
         upsert_job(out_dir.name, status="done", step=_last_step[0])
+        job_done(out_dir.name, _last_step[0])
     except Exception:
         pass
     try:
@@ -491,13 +509,16 @@ def run_pipeline(
     except Exception:
         pass
     try:
-        export_scenes_json(video_path, out_dir, cfg)
+        if (cfg.get("scene_detect") or {}).get("export_on_complete", True):
+            export_scenes_json(video_path, out_dir, cfg)
     except Exception:
         pass
     try:
         final_vid = _find_work_video(out_dir, video_path.stem)
         if final_vid:
-            apply_audio_enhance(cfg, final_vid, out_dir / f"{video_path.stem}_enhanced.mp4")
+            enhanced = apply_audio_enhance(cfg, final_vid, out_dir / f"{video_path.stem}_enhanced.mp4")
+            if enhanced:
+                console.print(f"[green]音频增强[/green] {enhanced.name}")
     except Exception:
         pass
     if zip_path:

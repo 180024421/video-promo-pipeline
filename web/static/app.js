@@ -1,4 +1,4 @@
-const $ = (s, p = document) => p.querySelector(s);
+﻿const $ = (s, p = document) => p.querySelector(s);
 const $$ = (s, p = document) => [...p.querySelectorAll(s)];
 
 const _nativeFetch = window.fetch.bind(window);
@@ -52,19 +52,19 @@ async function loadQueuePanel() {
     const el = $('#queue-status');
     if (!el) return;
     el.innerHTML = `并发 ${q.active_count || 0}/${q.max_concurrent || 1} · 排队 ${q.pending_count || 0} 个` +
-      (q.paused ? ' · <strong style="color:var(--warning)">已暂�?/strong>' : '') +
+      (q.paused ? ' · <strong style="color:var(--warning)">已暂�?/strong>' : '') +
       (q.pending?.length ? `<br><small>${q.pending.join(', ')}</small>` : '');
   } catch (_) {}
 }
 
 $('#btn-queue-pause')?.addEventListener('click', async () => {
   await fetch('/api/queue/pause', { method: 'POST' });
-  toast('队列已暂�?);
+  toast('队列已暂�?);
   loadQueuePanel();
 });
 $('#btn-queue-resume')?.addEventListener('click', async () => {
   await fetch('/api/queue/resume', { method: 'POST' });
-  toast('队列已恢�?);
+  toast('队列已恢�?);
   loadQueuePanel();
 });
 
@@ -76,12 +76,12 @@ async function loadTimingAnalytics() {
     const el = $('#timing-analytics');
     if (el && t.step_averages) {
       const rows = Object.entries(t.step_averages).map(([k, v]) => `${k}: ${v}s`).join(' · ');
-      el.innerHTML = `已分�?${t.job_count || 0} 个任务` +
+      el.innerHTML = `已分�?${t.job_count || 0} 个任务` +
         (t.bottleneck ? ` · 瓶颈 <strong>${escHtml(t.bottleneck)}</strong>` : '') +
         (rows ? `<br><small>${escHtml(rows)}</small>` : '');
     }
     if ($('#lm-cost-hint')) {
-      $('#lm-cost-hint').textContent = `LM ${lm.total_calls || 0} �?· ${lm.total_tokens || 0} tokens · ${lm.note || ''}`;
+      $('#lm-cost-hint').textContent = `LM ${lm.total_calls || 0} �?· ${lm.total_tokens || 0} tokens · ${lm.note || ''}`;
     }
   } catch (_) {}
 }
@@ -93,7 +93,7 @@ async function loadTools() {
     const el = $('#prompt-templates-list');
     if (el) {
       el.innerHTML = tpls.length
-        ? tpls.map(t => `<div class="file-tag" style="display:block;margin:6px 0">${escHtml(t.name || t.id)} <small>(${t.platform || '-'})</small> �?<code>${t.id}</code></div>`).join('')
+        ? tpls.map(t => `<div class="file-tag" style="display:block;margin:6px 0">${escHtml(t.name || t.id)} <small>(${t.platform || '-'})</small> �?<code>${t.id}</code></div>`).join('')
         : '<div class="empty">暂无模板</div>';
     }
     const ar = await fetch('/api/audit');
@@ -104,7 +104,7 @@ async function loadTools() {
       box.textContent = lines.map(e => typeof e === 'string' ? e : JSON.stringify(e)).join('\n') || '暂无记录';
     }
     const oauth = await fetch('/api/bilibili/oauth/url').then(r => r.json()).catch(() => ({}));
-    $('#bili-oauth-status').textContent = oauth.authorized ? '已授�? : (oauth.error || '未授�?);
+    $('#bili-oauth-status').textContent = oauth.authorized ? '已授�? : (oauth.error || '未授�?);
     window._biliOAuthUrl = oauth.url;
     const sched = await fetch('/api/schedules/all').then(r => r.json());
     $('#schedule-calendar').innerHTML = sched.length
@@ -115,7 +115,7 @@ async function loadTools() {
       btn.onclick = async () => {
         await fetch('/api/schedules/cancel', { method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ job_name: btn.dataset.cancelSchedule, platform: btn.dataset.platform, publish_at: btn.dataset.at }) });
-        toast('已取�?); loadTools();
+        toast('已取�?); loadTools();
       };
     });
     const acc = await fetch('/api/accounts').then(r => r.json());
@@ -131,26 +131,26 @@ async function loadTools() {
     $$('[data-tpl]').forEach(btn => { btn.onclick = async () => {
       const r = await fetch(`/api/template-market/${btn.dataset.tpl}/apply`, { method: 'POST' });
       const j = await r.json();
-      toast(j.ok ? '已应用模�? : '失败', j.ok);
+      toast(j.ok ? '已应用模�? : '失败', j.ok);
     }; });
     const ab = await fetch('/api/ab-feedback').then(r => r.json());
-    $('#ab-suggest').textContent = ab.suggest?.best_title ? `最佳标�? ${ab.suggest.best_title} (样本 ${ab.suggest.sample_count})` : (ab.suggest?.note || '');
+    $('#ab-suggest').textContent = ab.suggest?.best_title ? `最佳标�? ${ab.suggest.best_title} (样本 ${ab.suggest.sample_count})` : (ab.suggest?.note || '');
     const cfg = await fetch('/api/config').then(r => r.json());
     if ($('#hotwords-input') && cfg.whisper?.hotwords) $('#hotwords-input').value = (cfg.whisper.hotwords || []).join(', ');
   } catch (e) {
-    toast('工具页加载失�?, false);
+    toast('工具页加载失�?, false);
   }
 }
 
 $('#btn-save-template')?.addEventListener('click', async () => {
   const id = $('#tpl-id')?.value?.trim();
-  if (!id) return toast('请填写模�?ID', false);
+  if (!id) return toast('请填写模�?ID', false);
   let body = {};
   try { body = JSON.parse($('#tpl-json')?.value || '{}'); } catch { return toast('JSON 无效', false); }
   if ($('#tpl-name')?.value) body.name = $('#tpl-name').value;
   const r = await fetch(`/api/prompt-templates/${encodeURIComponent(id)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const d = await r.json();
-  toast(d.ok ? '模板已保�? : (d.error || '失败'), d.ok);
+  toast(d.ok ? '模板已保�? : (d.error || '失败'), d.ok);
   loadTools();
 });
 
@@ -159,7 +159,7 @@ $('#btn-save-accounts')?.addEventListener('click', async () => {
   try { accounts = JSON.parse($('#accounts-json')?.value || '[]'); } catch { return toast('JSON 无效', false); }
   const r = await fetch('/api/accounts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ accounts }) });
   const d = await r.json();
-  toast(d.ok ? '账号已保�? : (d.error || '失败'), d.ok);
+  toast(d.ok ? '账号已保�? : (d.error || '失败'), d.ok);
 });
 
 $('#btn-run-schedules')?.addEventListener('click', async () => {
@@ -176,7 +176,7 @@ $('#btn-restore-job')?.addEventListener('click', async () => {
   fd.append('file', f);
   const r = await fetch('/api/jobs/restore', { method: 'POST', body: fd });
   const d = await r.json();
-  toast(d.ok ? `已恢�? ${d.job}` : (d.error || '失败'), d.ok);
+  toast(d.ok ? `已恢�? ${d.job}` : (d.error || '失败'), d.ok);
   if (d.ok) loadJobs();
 });
 
@@ -186,10 +186,10 @@ async function loadDashboard() {
   $('#dashboard-stats').textContent = `任务 ${d.stats?.total || 0} · 完成 ${d.stats?.done || 0} · 定时 ${d.stats?.scheduled || 0}`;
   $('#dashboard-schedules').innerHTML = (d.schedules || []).map(s =>
     `<div class="file-tag" style="display:block;margin:4px 0">${escHtml(s.job_name)} · ${s.platform} @ ${s.publish_at}</div>`
-  ).join('') || '<div class="empty">�?/div>';
+  ).join('') || '<div class="empty">�?/div>';
   $('#dashboard-jobs').innerHTML = (d.jobs || []).slice(0, 30).map(j =>
     `<div style="margin:6px 0"><strong>${escHtml(j.name)}</strong> <small>${j.status}</small> ${Object.entries(j.links||{}).map(([k,v])=>`<a href="${v}" target="_blank">${k}</a>`).join(' ')}</div>`
-  ).join('') || '<div class="empty">�?/div>';
+  ).join('') || '<div class="empty">�?/div>';
 }
 
 $('#btn-save-hotwords')?.addEventListener('click', async () => {
@@ -199,26 +199,26 @@ $('#btn-save-hotwords')?.addEventListener('click', async () => {
   cfg.whisper = cfg.whisper || {};
   cfg.whisper.hotwords = hw;
   await fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cfg) });
-  toast('热词已保�?);
+  toast('热词已保�?);
 });
 
 $('#btn-save-ab')?.addEventListener('click', async () => {
   await fetch('/api/ab-feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ platform: 'bilibili', title: $('#ab-title')?.value, views: Number($('#ab-views')?.value), ctr: Number($('#ab-ctr')?.value) }) });
-  toast('已录�?); loadTools();
+  toast('已录�?); loadTools();
 });
 
 $('#btn-save-knowledge')?.addEventListener('click', async () => {
   const r = await fetch('/api/knowledge', { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: $('#knowledge-name')?.value, content: $('#knowledge-content')?.value }) });
   const d = await r.json();
-  toast(d.ok ? '已保�? : (d.error || '失败'), d.ok);
+  toast(d.ok ? '已保�? : (d.error || '失败'), d.ok);
   loadTools();
 });
 
 $('#btn-bili-oauth')?.addEventListener('click', () => {
   if (window._biliOAuthUrl) window.open(window._biliOAuthUrl, '_blank');
-  else toast('请先�?config 配置 B �?OAuth', false);
+  else toast('请先�?config 配置 B �?OAuth', false);
 });
 
 function toast(msg, ok = true) {
@@ -259,10 +259,10 @@ async function loadBatch() {
   const d = await r.json();
   const el = $('#batch-list');
   if (!d.pending?.length) {
-    el.innerHTML = '<div class="empty">watch_in 暂无待处理视�?/div>';
+    el.innerHTML = '<div class="empty">watch_in 暂无待处理视�?/div>';
     return;
   }
-  el.innerHTML = `<p>待处�?${d.count} �?· 目录: ${escHtml(d.watch_dir)}</p>` +
+  el.innerHTML = `<p>待处�?${d.count} �?· 目录: ${escHtml(d.watch_dir)}</p>` +
     d.pending.map(f => `<div class="file-tag">${escHtml(f.name)} (${(f.size/1024/1024).toFixed(1)} MB)</div>`).join('');
 }
 
@@ -270,7 +270,7 @@ $('#batch-refresh-btn')?.addEventListener('click', loadBatch);
 $('#batch-process-btn')?.addEventListener('click', async () => {
   const r = await fetch('/api/batch/process', { method: 'POST' });
   const d = await r.json();
-  toast(d.ok ? `已启�? ${(d.started||[]).join(', ')}` : (d.error || '失败'), d.ok);
+  toast(d.ok ? `已启�? ${(d.started||[]).join(', ')}` : (d.error || '失败'), d.ok);
   loadBatch();
   loadJobs();
 });
@@ -283,7 +283,7 @@ async function checkVersion() {
     const banner = $('#version-banner');
     if (d.update_available && banner) {
       banner.style.display = 'block';
-      $('#version-banner-text').textContent = `当前 v${d.version}，最�?v${d.latest}`;
+      $('#version-banner-text').textContent = `当前 v${d.version}，最�?v${d.latest}`;
     }
   } catch (_) {}
 }
@@ -306,10 +306,10 @@ async function loadSetupWizard() {
 }
 
 $('#btn-install-optional')?.addEventListener('click', async () => {
-  toast('正在安装可选依赖�?);
+  toast('正在安装可选依赖�?);
   const r = await fetch('/api/optional-deps/install', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
   const d = await r.json();
-  toast(Object.values(d).every(x => x.ok) ? '可选依赖安装完�? : '部分安装失败，见终端', Object.values(d).every(x => x.ok));
+  toast(Object.values(d).every(x => x.ok) ? '可选依赖安装完�? : '部分安装失败，见终端', Object.values(d).every(x => x.ok));
   loadSetupWizard();
 });
 
@@ -330,7 +330,7 @@ function renderWaveformTimeline(wf, segments) {
         return `<div class="wf-seg" data-idx="${i}" style="position:absolute;left:${left}%;width:${w}%;height:100%;background:rgba(76,201,240,0.35);border:1px solid var(--accent);cursor:ew-resize;border-radius:2px" title="${escAttr(s.text || '')}"></div>`;
       }).join('') + '</div>';
   }
-  return `<div class="waveform-wrap" style="margin-bottom:12px"><div style="font-size:0.75rem;color:var(--text-muted)">波形时间轴（拖拽色块校对起止�?/div>
+  return `<div class="waveform-wrap" style="margin-bottom:12px"><div style="font-size:0.75rem;color:var(--text-muted)">波形时间轴（拖拽色块校对起止�?/div>
     <div style="display:flex;align-items:flex-end;height:52px;gap:1px">${bars}</div>${segHtml}</div>`;
 }
 
@@ -381,13 +381,13 @@ async function loadStatus() {
     if (d.checks.queue) {
       items.push(['GPU 队列', d.checks.queue.active_count < d.checks.queue.max_concurrent]);
       if (d.checks.queue.pending_count > 0) {
-        grid.innerHTML += `<div class="status-item" style="grid-column:1/-1"><div class="label">排队任务</div><div style="font-size:0.8rem">${d.checks.queue.pending.join(', ') || d.checks.queue.pending_count + ' �?}</div></div>`;
+        grid.innerHTML += `<div class="status-item" style="grid-column:1/-1"><div class="label">排队任务</div><div style="font-size:0.8rem">${d.checks.queue.pending.join(', ') || d.checks.queue.pending_count + ' �?}</div></div>`;
       }
     }
     grid.innerHTML = items.map(([label, ok]) => `
       <div class="status-item">
         <div class="label">${label}</div>
-        <span class="badge ${ok ? 'badge-ok' : 'badge-err'}">${ok ? '正常' : '未就�?}</span>
+        <span class="badge ${ok ? 'badge-ok' : 'badge-err'}">${ok ? '正常' : '未就�?}</span>
       </div>
     `).join('');
     if (d.checks.ffmpeg_path) {
@@ -409,7 +409,7 @@ async function loadStatus() {
     if (d.version && $('#app-version')) $('#app-version').textContent = `v${d.version}`;
     if (d.lm_usage) {
       grid.innerHTML += `<div class="status-item" style="grid-column:1/-1"><div class="label">LM 调用</div>
-        <div style="font-size:0.8rem">${d.lm_usage.total_calls} �?· ${d.lm_usage.total_prompt_tokens + d.lm_usage.total_completion_tokens} tokens</div></div>`;
+        <div style="font-size:0.8rem">${d.lm_usage.total_calls} �?· ${d.lm_usage.total_prompt_tokens + d.lm_usage.total_completion_tokens} tokens</div></div>`;
     }
 
     const card = $('#ffmpeg-install-card');
@@ -431,13 +431,13 @@ async function loadStatus() {
     loadQueuePanel();
     loadTimingAnalytics();
   } catch (e) {
-    toast('状态加载失�?, false);
+    toast('状态加载失�?, false);
   }
 }
 
 function showFfmpegProgress(msg, pct) {
   $('#ffmpeg-install-progress').style.display = 'block';
-  $('#ffmpeg-install-msg').textContent = msg || '处理中�?;
+  $('#ffmpeg-install-msg').textContent = msg || '处理中�?;
   $('#ffmpeg-install-bar').style.width = `${pct || 0}%`;
 }
 
@@ -469,14 +469,14 @@ function stopFfmpegPoll() {
 $('#btn-ffmpeg-install')?.addEventListener('click', async () => {
   const btn = $('#btn-ffmpeg-install');
   btn.disabled = true;
-  showFfmpegProgress('开始下载�?, 0);
+  showFfmpegProgress('开始下载�?, 0);
   try {
     const r = await fetch('/api/ffmpeg/install', { method: 'POST' });
     const d = await r.json();
     if (d.ok) {
       startFfmpegPoll();
     } else {
-      toast(d.error || '无法开始安�?, false);
+      toast(d.error || '无法开始安�?, false);
       btn.disabled = false;
     }
   } catch (e) {
@@ -537,12 +537,12 @@ $('#upload-form').addEventListener('submit', async e => {
   const preset = $('#upload-preset').value;
   if (preset) fd.append('preset', preset);
   $('#upload-btn').disabled = true;
-  $('#upload-btn').textContent = '处理�?..';
+  $('#upload-btn').textContent = '处理�?..';
   try {
     const r = await fetch('/api/upload', { method: 'POST', body: fd });
     const d = await r.json();
     if (d.ok) {
-      toast(d.warnings?.length ? `任务已创建（${d.warnings[0]}）` : `任务已创�? ${d.job}`);
+      toast(d.warnings?.length ? `任务已创建（${d.warnings[0]}）` : `任务已创�? ${d.job}`);
       fileInput.value = '';
       $('#file-name').textContent = '';
       $$('.nav-item').forEach(n => n.classList.remove('active'));
@@ -557,7 +557,7 @@ $('#upload-form').addEventListener('submit', async e => {
     toast('上传失败: ' + err.message, false);
   }
   $('#upload-btn').disabled = false;
-  $('#upload-btn').textContent = '开始处�?;
+  $('#upload-btn').textContent = '开始处�?;
 });
 
 // ── Jobs ──
@@ -567,13 +567,13 @@ async function loadJobs() {
     const jobs = await r.json();
     const el = $('#job-list');
     if (!jobs.length) {
-      el.innerHTML = '<div class="empty">暂无任务，去上传页面添加视频�?/div>';
+      el.innerHTML = '<div class="empty">暂无任务，去上传页面添加视频�?/div>';
       return;
     }
     el.innerHTML = jobs.map(j => {
       const st = j.status || 'idle';
       const badge = st === 'done' ? 'badge-ok' : st === 'running' ? 'badge-run' : st === 'error' ? 'badge-err' : 'badge-warn';
-      const stText = st === 'done' ? '完成' : st === 'running' ? (j.step || '处理�?) : st === 'queued' ? (j.step || '排队�?) : st === 'error' ? '失败' : '空闲';
+      const stText = st === 'done' ? '完成' : st === 'running' ? (j.step || '处理�?) : st === 'queued' ? (j.step || '排队�?) : st === 'error' ? '失败' : '空闲';
       const prog = j.progress || 0;
       const progBar = (st === 'running' || st === 'queued') ? `<div style="height:4px;background:#333;border-radius:2px;margin-top:6px"><div style="width:${prog}%;height:100%;background:var(--accent);border-radius:2px"></div></div>` : '';
       const files = (j.files || []).map(f => `<span class="file-tag">${f.name}</span>`).join('');
@@ -582,7 +582,7 @@ async function loadJobs() {
           <h3>${j.name}</h3>
           <span class="badge ${badge}">${stText}</span>
         </div>
-        <div class="job-card-meta">${j.created || ''} · ${(j.files||[]).length} 个文�?/div>
+        <div class="job-card-meta">${j.created || ''} · ${(j.files||[]).length} 个文�?/div>
         ${progBar}
         <div class="job-card-files">${files}</div>
       </div>`;
@@ -604,7 +604,7 @@ function renderStepTimeline(prog) {
     if (skipped.includes(name)) cls = 'skipped';
     else if (allDone || completed.includes(name)) cls = 'done';
     else if (current === name) cls = 'running';
-    const icon = cls === 'done' ? '�? : cls === 'running' ? '�? : '·';
+    const icon = cls === 'done' ? '�? : cls === 'running' ? '�? : '·';
     return `<div class="step-item ${cls}"><div class="step-dot">${icon}</div><div class="step-label">${name}</div></div>`;
   }).join('')}</div>`;
 }
@@ -615,9 +615,9 @@ function renderNarrationEditor(tl, name) {
     <tr><td><input type="number" step="0.1" class="seg-start" value="${Number(s.start).toFixed(1)}"></td>
     <td><input type="number" step="0.1" class="seg-end" value="${Number(s.end).toFixed(1)}"></td>
     <td><input type="text" class="seg-text" value="${escAttr(s.text || '')}"></td></tr>`).join('');
-  return `<p class="hint-text">编辑解说稿后保存，再点「重跑配音」�?/p>
-    <table class="seg-table"><thead><tr><th>开�?/th><th>结束</th><th>文本</th></tr></thead><tbody>${rows}</tbody></table>
-    <button class="btn btn-sm btn-primary" id="save-narration-btn" style="margin-top:8px">保存解说�?/button>`;
+  return `<p class="hint-text">编辑解说稿后保存，再点「重跑配音」�?/p>
+    <table class="seg-table"><thead><tr><th>开�?/th><th>结束</th><th>文本</th></tr></thead><tbody>${rows}</tbody></table>
+    <button class="btn btn-sm btn-primary" id="save-narration-btn" style="margin-top:8px">保存解说�?/button>`;
 }
 
 function renderSegmentEditor(segments, name) {
@@ -631,8 +631,8 @@ function renderSegmentEditor(segments, name) {
       <td><input type="text" class="tx-text" value="${escAttr(s.text || '')}"></td>
       <td><span class="tx-speaker">${escHtml(s.speaker || '')}</span></td>
     </tr>`).join('');
-  return `<p class="hint-text">拖动滑块或编辑数字校对字幕；保存后点「重跑字幕」�?/p>
-    <table class="seg-table"><thead><tr><th>开�?/th><th>结束</th><th>文本</th><th>说话�?/th></tr></thead><tbody>${rows}</tbody></table>
+  return `<p class="hint-text">拖动滑块或编辑数字校对字幕；保存后点「重跑字幕」�?/p>
+    <table class="seg-table"><thead><tr><th>开�?/th><th>结束</th><th>文本</th><th>说话�?/th></tr></thead><tbody>${rows}</tbody></table>
     <button class="btn btn-sm btn-primary" id="save-segments-btn" style="margin-top:8px">保存字幕</button>`;
 }
 
@@ -660,7 +660,7 @@ async function saveNarrationFromTable(tl, name) {
   await fetch(`/api/jobs/${encodeURIComponent(name)}/narration`, {
     method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
   });
-  toast('解说稿已保存，可点「重跑配音」生�?);
+  toast('解说稿已保存，可点「重跑配音」生�?);
 }
 
 // ── Job Detail ──
@@ -710,7 +710,7 @@ async function openJobDetail(name) {
 
   fetch(`/api/jobs/${encodeURIComponent(name)}/upload-progress`).then(r => r.json()).then(up => {
     if (up && up.status === 'uploading') {
-      filesEl.innerHTML += `<div class="hint-text" style="margin-top:8px">B站上�? ${up.percent || 0}% �?${up.message || ''}</div>`;
+      filesEl.innerHTML += `<div class="hint-text" style="margin-top:8px">B站上�? ${up.percent || 0}% �?${up.message || ''}</div>`;
     }
   }).catch(() => {});
 
@@ -720,24 +720,24 @@ async function openJobDetail(name) {
   let copyHtml = '';
   if (promo.bilibili) {
     const b = promo.bilibili;
-    copyHtml += `<div class="copy-block"><h4>B站标题候�?/h4><div class="preview-box">${(b.titles||[]).map((t,i)=>`${i+1}. ${t}`).join('\n')}</div></div>`;
-    copyHtml += `<div class="copy-block"><h4>B站简�?/h4><div class="preview-box">${escHtml(b.description||'')}</div>
-      <button class="btn btn-sm btn-secondary" onclick="copyText(this)" data-text="${escAttr(b.description||'')}">复制简�?/button></div>`;
+    copyHtml += `<div class="copy-block"><h4>B站标题候�?/h4><div class="preview-box">${(b.titles||[]).map((t,i)=>`${i+1}. ${t}`).join('\n')}</div></div>`;
+    copyHtml += `<div class="copy-block"><h4>B站简�?/h4><div class="preview-box">${escHtml(b.description||'')}</div>
+      <button class="btn btn-sm btn-secondary" onclick="copyText(this)" data-text="${escAttr(b.description||'')}">复制简�?/button></div>`;
     if (b.tags) copyHtml += `<div class="copy-block"><h4>标签</h4><div class="preview-box">${b.tags.join(', ')}</div></div>`;
   }
   if (promo.xiaohongshu) {
     const x = promo.xiaohongshu;
-    copyHtml += `<div class="copy-block"><h4>小红书标�?/h4><div class="preview-box">${escHtml(x.title||'')}</div></div>`;
-    copyHtml += `<div class="copy-block"><h4>小红书正�?/h4><div class="preview-box">${escHtml(x.body||'')}</div>
+    copyHtml += `<div class="copy-block"><h4>小红书标�?/h4><div class="preview-box">${escHtml(x.title||'')}</div></div>`;
+    copyHtml += `<div class="copy-block"><h4>小红书正�?/h4><div class="preview-box">${escHtml(x.body||'')}</div>
       <button class="btn btn-sm btn-secondary" onclick="copyText(this)" data-text="${escAttr((x.title||'')+'\n\n'+(x.body||'')+'\n\n'+(x.topics||[]).join(' '))}">复制全文</button></div>`;
   }
   if (promo.short_hooks) {
-    copyHtml += `<div class="copy-block"><h4>前三秒钩�?/h4><div class="preview-box">${promo.short_hooks.map((h,i)=>`${i+1}. ${h}`).join('\n')}</div></div>`;
+    copyHtml += `<div class="copy-block"><h4>前三秒钩�?/h4><div class="preview-box">${promo.short_hooks.map((h,i)=>`${i+1}. ${h}`).join('\n')}</div></div>`;
   }
   if (d.promo_copy_md) {
     copyHtml += `<div class="copy-block"><h4>完整 Markdown</h4><div class="preview-box">${escHtml(d.promo_copy_md)}</div></div>`;
   }
-  copyEl.innerHTML = copyHtml || '<div class="empty">暂无文案，点击下方重新生�?/div>';
+  copyEl.innerHTML = copyHtml || '<div class="empty">暂无文案，点击下方重新生�?/div>';
 
   // Transcript tab
   $('#tab-transcript').innerHTML = d.transcript_txt
@@ -750,7 +750,7 @@ async function openJobDetail(name) {
     tlEl.innerHTML = renderNarrationEditor(tl, name);
     $('#save-narration-btn')?.addEventListener('click', () => saveNarrationFromTable(tl, name));
   } else {
-    tlEl.innerHTML = '<div class="empty">暂无 narration.json（需开�?AI 配音�?/div>';
+    tlEl.innerHTML = '<div class="empty">暂无 narration.json（需开�?AI 配音�?/div>';
   }
 
   $('#tab-steps').innerHTML = renderStepTimeline(d.pipeline_progress);
@@ -765,7 +765,7 @@ async function openJobDetail(name) {
   fetch(`/api/jobs/${encodeURIComponent(name)}/qc`).then(r => r.json()).then(q => {
     if (q.error || q.skipped) return;
     $('#tab-steps').innerHTML += `<div class="card" style="margin-top:1rem"><h4>成片质检</h4>
-      <p class="hint-text">${q.ok ? '通过' : '有问�?} · 音量 ${q.mean_volume_db ?? '-'} dB</p>
+      <p class="hint-text">${q.ok ? '通过' : '有问�?} · 音量 ${q.mean_volume_db ?? '-'} dB</p>
       ${(q.issues || []).concat(q.warnings || []).map(x => `<div>${escHtml(x)}</div>`).join('')}</div>`;
   }).catch(() => {});
 
@@ -793,7 +793,7 @@ async function openJobDetail(name) {
         await fetch(`/api/jobs/${encodeURIComponent(name)}/segments`, {
           method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ segments: segs }),
         });
-        toast('字幕已保存，可点「重跑字幕�?);
+        toast('字幕已保存，可点「重跑字幕�?);
       });
     }).catch(() => {
       segEl.innerHTML = renderSegmentEditor(segData.segments, name);
@@ -808,9 +808,9 @@ async function openJobDetail(name) {
     $('#logs-box').textContent = l.logs || '暂无日志';
   });
 
-  $('#tab-publish').innerHTML = '<div class="empty">加载发布�?..</div>';
+  $('#tab-publish').innerHTML = '<div class="empty">加载发布�?..</div>';
   fetch(`/api/jobs/${encodeURIComponent(name)}/publish-pack`).then(r => r.json()).then(p => {
-    let html = '<div class="copy-block"><h4>一键复�?/h4>';
+    let html = '<div class="copy-block"><h4>一键复�?/h4>';
     for (const [k, v] of Object.entries(p.clipboard || {})) {
       html += `<div style="margin:8px 0"><strong>${k}</strong><div class="preview-box">${escHtml(String(v))}</div>
         <button class="btn btn-sm btn-secondary" onclick="copyText(this)" data-text="${escAttr(String(v))}">复制</button></div>`;
@@ -823,8 +823,8 @@ async function openJobDetail(name) {
   fetch(`/api/jobs/${encodeURIComponent(name)}/upload-progress`).then(r => r.json()).then(up => {
     if (!up || up.status === 'none') return;
     const pub = $('#tab-publish');
-    let extra = `<div class="card" style="margin-top:1rem"><h4>B站上�?/h4>
-      <p>状�? ${escHtml(up.status)} · ${up.percent || 0}% �?${escHtml(up.message || '')}</p>`;
+    let extra = `<div class="card" style="margin-top:1rem"><h4>B站上�?/h4>
+      <p>状�? ${escHtml(up.status)} · ${up.percent || 0}% �?${escHtml(up.message || '')}</p>`;
     if (up.bvid) extra += `<p><a href="https://www.bilibili.com/video/${up.bvid}" target="_blank">${up.bvid}</a></p>`;
     if (up.status === 'error' || up.resumable) {
       extra += `<button class="btn btn-sm btn-primary" id="bili-retry-btn">重试/续传</button>`;
@@ -833,23 +833,23 @@ async function openJobDetail(name) {
     pub.innerHTML += extra;
     $('#bili-retry-btn')?.addEventListener('click', async () => {
       await fetch(`/api/jobs/${encodeURIComponent(name)}/bilibili-retry`, { method: 'POST' });
-      toast('已启�?B 站上传重�?);
+      toast('已启�?B 站上传重�?);
     });
   }).catch(() => {});
 
-  $('#tab-vision').innerHTML = '<div class="empty">加载�?..</div>';
+  $('#tab-vision').innerHTML = '<div class="empty">加载�?..</div>';
   fetch(`/api/jobs/${encodeURIComponent(name)}/vision-plan`).then(r => r.json()).then(v => {
     if (!v.pending?.clips?.length) {
-      $('#tab-vision').innerHTML = '<div class="empty">无视觉剪辑方�?/div>';
+      $('#tab-vision').innerHTML = '<div class="empty">无视觉剪辑方�?/div>';
       return;
     }
     const clips = v.pending.clips.map(c => `${c.start}s-${c.end}s: ${c.reason || ''}`).join('\n');
     $('#tab-vision').innerHTML = `<div class="preview-box">${escHtml(clips)}</div>
-      <p class="hint-text">${v.confirmed ? '已批�? : '待批�?�?确认后请重跑智能剪辑'}</p>
+      <p class="hint-text">${v.confirmed ? '已批�? : '待批�?�?确认后请重跑智能剪辑'}</p>
       ${v.confirmed ? '' : '<button class="btn btn-sm btn-primary" id="approve-vision-btn">批准视觉方案</button>'}`;
     $('#approve-vision-btn')?.addEventListener('click', async () => {
       await fetch(`/api/jobs/${encodeURIComponent(name)}/vision-approve`, { method: 'POST' });
-      toast('已批准，请重跑智能剪辑相关步�?);
+      toast('已批准，请重跑智能剪辑相关步�?);
       openJobDetail(name);
     });
   });
@@ -857,36 +857,36 @@ async function openJobDetail(name) {
   $('#dub-ab-btn').onclick = async () => {
     const r = await fetch(`/api/jobs/${encodeURIComponent(name)}/dub-ab`, { method: 'POST' });
     const j = await r.json();
-    toast(j.ok ? '正在生成 AB 双音�? : (j.error || '失败'), j.ok);
+    toast(j.ok ? '正在生成 AB 双音�? : (j.error || '失败'), j.ok);
   };
 
   $('#backup-job-btn').onclick = async () => {
     const r = await fetch(`/api/jobs/${encodeURIComponent(name)}/backup`, { method: 'POST' });
     const j = await r.json();
-    if (j.ok && j.path) toast(`备份已创�? ${j.path}`);
+    if (j.ok && j.path) toast(`备份已创�? ${j.path}`);
     else toast(j.error || '备份失败', false);
   };
 
   $('#cancel-queue-job-btn').onclick = async () => {
     const r = await fetch(`/api/queue/cancel/${encodeURIComponent(name)}`, { method: 'POST' });
     const j = await r.json();
-    toast(j.ok ? '已取消排�? : (j.error || '无法取消'), j.ok);
+    toast(j.ok ? '已取消排�? : (j.error || '无法取消'), j.ok);
     loadJobs();
   };
 
   $('#force-stop-job-btn').onclick = async () => {
-    if (!confirm('强制停止将中断当�?GPU 任务，确定？')) return;
+    if (!confirm('强制停止将中断当�?GPU 任务，确定？')) return;
     const r = await fetch(`/api/queue/force-stop/${encodeURIComponent(name)}`, { method: 'POST' });
     const j = await r.json();
-    toast(j.ok ? '已发送停止信�? : (j.error || '失败'), j.ok);
+    toast(j.ok ? '已发送停止信�? : (j.error || '失败'), j.ok);
     loadJobs();
   };
 
   $('#delete-job-btn').onclick = async () => {
-    if (!confirm('确定删除此任务及全部文件�?)) return;
+    if (!confirm('确定删除此任务及全部文件�?)) return;
     const r = await fetch(`/api/jobs/${encodeURIComponent(name)}`, { method: 'DELETE' });
     const j = await r.json();
-    if (j.ok) { toast('已删�?); $('#detail-overlay').classList.remove('open'); loadJobs(); }
+    if (j.ok) { toast('已删�?); $('#detail-overlay').classList.remove('open'); loadJobs(); }
     else toast(j.error || '删除失败', false);
   };
 
@@ -925,12 +925,12 @@ $('#regen-copy-btn').addEventListener('click', async () => {
   if (!currentJob) return;
   const r = await fetch(`/api/jobs/${encodeURIComponent(currentJob)}/regenerate-copy`, { method: 'POST' });
   const d = await r.json();
-  if (d.ok) { toast('文案重新生成�?..'); setTimeout(() => openJobDetail(currentJob), 3000); }
+  if (d.ok) { toast('文案重新生成�?..'); setTimeout(() => openJobDetail(currentJob), 3000); }
   else toast(d.error || '失败', false);
 });
 
 function copyText(btn) {
-  navigator.clipboard.writeText(btn.dataset.text).then(() => toast('已复�?));
+  navigator.clipboard.writeText(btn.dataset.text).then(() => toast('已复�?));
 }
 
 function escHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
@@ -1044,8 +1044,8 @@ $('#save-lm-config').addEventListener('click', async () => {
     enabled: $('#cfg-narration-enabled').checked,
     mode: $('#cfg-narration-mode').value,
     use_lm: true,
-    style: (configData.narration || {}).style || '专业解说，口语化，节奏紧�?,
-    persona: (configData.narration || {}).persona || '科技�?UP �?,
+    style: (configData.narration || {}).style || '专业解说，口语化，节奏紧�?,
+    persona: (configData.narration || {}).persona || '科技�?UP �?,
   };
   configData.dubbing = {
     ...configData.dubbing,
@@ -1101,7 +1101,7 @@ $('#save-lm-config').addEventListener('click', async () => {
   };
   const r = await fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(configData) });
   const d = await r.json();
-  toast(d.ok ? '配置已保�? : (d.error || '保存失败'), d.ok);
+  toast(d.ok ? '配置已保�? : (d.error || '保存失败'), d.ok);
 });
 
 // ── Copy Config ──
@@ -1138,7 +1138,7 @@ async function loadCopyConfig() {
     }
   }
   const gen = copy.general || {};
-  $('#copy-hook-style').value = gen.short_hook_style || '痛点反问�?;
+  $('#copy-hook-style').value = gen.short_hook_style || '痛点反问�?;
   $('#copy-hook-count').value = gen.short_hook_count ?? 3;
   $('#copy-forbidden').value = (gen.global_forbidden_words || []).join(', ');
 }
@@ -1179,14 +1179,14 @@ $('#save-copy-config').addEventListener('click', async () => {
   };
   const r = await fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(configData) });
   const d = await r.json();
-  toast(d.ok ? '文案配置已保�? : (d.error || '保存失败'), d.ok);
+  toast(d.ok ? '文案配置已保�? : (d.error || '保存失败'), d.ok);
 });
 
 // ── Init ──
 async function loadTerminology() {
   const r = await fetch('/api/terminology');
   const d = await r.json();
-  const lines = Object.entries(d.replacements || {}).map(([k, v]) => `${k} �?${v}`);
+  const lines = Object.entries(d.replacements || {}).map(([k, v]) => `${k} �?${v}`);
   $('#term-editor').value = lines.join('\n');
 }
 
@@ -1217,7 +1217,7 @@ async function uploadAsset(inputId, kind) {
   fd.append('kind', kind);
   const r = await fetch('/api/assets/upload', { method: 'POST', body: fd });
   const d = await r.json();
-  toast(d.ok ? `已上�? ${d.path}` : (d.error || '失败'), d.ok);
+  toast(d.ok ? `已上�? ${d.path}` : (d.error || '失败'), d.ok);
   if (d.ok && kind === 'bgm') $('#cfg-bgm-file').value = d.path;
   if (d.ok && kind === 'voice') $('#cfg-voice-clone-audio').value = d.path;
   loadAssets();
@@ -1231,7 +1231,7 @@ $('#btn-tts-test')?.addEventListener('click', async () => {
   const r = await fetch('/api/tts/test', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text: '你好，这是配音测试�?, engine: $('#cfg-dub-engine')?.value, voice: $('#cfg-dub-voice')?.value }),
+    body: JSON.stringify({ text: '你好，这是配音测试�?, engine: $('#cfg-dub-engine')?.value, voice: $('#cfg-dub-voice')?.value }),
   });
   if (r.headers.get('content-type')?.includes('audio')) {
     const blob = await r.blob();
@@ -1249,7 +1249,7 @@ $('#btn-tts-test')?.addEventListener('click', async () => {
 
 $('#save-auth-token')?.addEventListener('click', () => {
   localStorage.setItem('auth_token', ($('#auth-token-input')?.value || '').trim());
-  toast('Token 已保存到浏览�?);
+  toast('Token 已保存到浏览�?);
 });
 if (localStorage.getItem('auth_token') && $('#auth-token-input')) {
   $('#auth-token-input').value = localStorage.getItem('auth_token');
@@ -1265,7 +1265,7 @@ $('#import-config-file')?.addEventListener('change', async (ev) => {
   const text = await file.text();
   const r = await fetch('/api/config/import?merge=true', { method: 'POST', body: text, headers: { 'Content-Type': 'text/yaml' } });
   const d = await r.json();
-  toast(d.ok ? '配置已导�? : (d.error || '导入失败'), d.ok);
+  toast(d.ok ? '配置已导�? : (d.error || '导入失败'), d.ok);
   if (d.ok) loadConfig();
   ev.target.value = '';
 });
@@ -1275,67 +1275,3 @@ setInterval(() => {
   if ($('#page-jobs').classList.contains('active')) loadJobs();
   if ($('#page-dashboard').classList.contains('active')) loadStatus();
 }, 5000);
-// ���� publish stats ����
-async function loadPublishStats() {
-  const r = await fetch('/api/analytics/publish');
-  const d = await r.json();
-  $('#publish-stats').innerHTML =
-    `�ܲ���: <strong>${d.total_views||0}</strong> | ����: ${d.total_likes||0} | ƽ̨: ${JSON.stringify(d.by_platform)}`;
-}
-$('#btn-ps-record')?.addEventListener('click', async () => {
-  const body = { job: $('#ps-job').value, platform: $('#ps-platform').value, views: +$('#ps-views').value, likes: +$('#ps-likes').value };
-  await fetch('/api/analytics/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  toast('�Ѽ�¼');
-  loadPublishStats();
-});
-
-// ���� video preview ����
-async function loadPreviewJobs() {
-  const r = await fetch('/api/jobs');
-  const jobs = await r.json();
-  const sel = $('#preview-job');
-  sel.innerHTML = '<option value="">ѡ������...</option>' + (jobs||[]).map(j => `<option value="${j.name}">${j.name}</option>`).join('');
-}
-$('#btn-generate-hls')?.addEventListener('click', async () => {
-  const job = $('#preview-job').value;
-  if (!job) return toast('��ѡ������', false);
-  const r = await fetch(`/api/jobs/${job}/hls`);
-  const d = await r.json();
-  if (d.playlist) {
-    const player = $('#preview-player');
-    player.src = `/output/${job}/hls/index.m3u8`;
-    player.style.display = 'block';
-    player.play();
-    toast(`HLS ������ ${d.segments} ��`);
-  } else toast(d.error || 'ʧ��', false);
-  const sr = await fetch(`/api/jobs/${job}/scenes`);
-  const sd = await sr.json();
-  if (sd.scenes) $('#preview-scenes').innerHTML = sd.scenes.slice(0,20).map(s => `${s.time_sec}s `).join(' �� ');
-});
-$('#btn-enhance-audio')?.addEventListener('click', async () => {
-  const job = $('#preview-job').value;
-  if (!job) return toast('��ѡ������', false);
-  const r = await fetch(`/api/jobs/${job}/enhance-audio`);
-  const d = await r.json();
-  toast(d.ok ? '��Ƶ��ǿ���' : (d.error||'ʧ��'), d.ok);
-});
-
-// ���� subtitle editor ����
-async function loadEditorJobs() {
-  const r = await fetch('/api/jobs');
-  const jobs = await r.json();
-  const sel = $('#editor-job');
-  sel.innerHTML = '<option value="">ѡ������...</option>' + (jobs||[]).map(j => `<option value="${j.name}">${j.name}</option>`).join('');
-}
-$('#btn-editor-load')?.addEventListener('click', async () => {
-  const job = $('#editor-job').value;
-  if (!job) return toast('��ѡ������', false);
-  const r = await fetch(`/api/jobs/${job}/segments`);
-  const d = await r.json();
-  const segs = d.segments || [];
-  $('#editor-segments').innerHTML = segs.map((s,i) =>
-    `<div style="border:1px solid var(--border);padding:4px 8px;margin:3px 0;border-radius:4px">
-      <b>${s.start}-${s.end}s</b> ${(s.text||'').replace(/</g,'&lt;')}
-    </div>`
-  ).join('');
-});

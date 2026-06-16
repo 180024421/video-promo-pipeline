@@ -590,3 +590,33 @@ team:
 tenant:
   enabled: false
   base_dir: output
+
+# ──────────────────────────────────────────────
+# v3.9 云存储 / Webhook / 音频增强 / 场景检测
+# ──────────────────────────────────────────────
+cloud_storage:
+  enabled: false
+  backend: s3                 # s3 | oss | cos
+  use_boto3: false            # true 时使用 boto3（pip install boto3）
+  endpoint: ""
+  bucket: "video-promo"
+  access_key: ""
+  secret_key: ""
+  public_base_url: ""
+
+webhook_trigger:
+  enabled: false
+  secret: ""
+
+audio_enhance:
+  enabled: false              # 流水线末尾音频去噪+响度归一化
+  denoise: true
+  normalize: true
+
+scene_detect:
+  use_in_smart_cut: true      # 场景切换点作为智能剪辑提示
+  export_on_complete: true
+  threshold: 0.3
+
+pipeline:
+  auto_cloud_upload: false

@@ -1,14 +1,18 @@
-# video-promo-pipeline v3.8
+# video-promo-pipeline v3.9
 
 本地录屏视频 AI 推广流水线：**转写 → 智能剪辑 → AI 配音 → 烧字幕/软字幕 → 竖屏切片 → 多平台文案 → 发布**。
 
-Web 面板：http://127.0.0.1:8766（子进程任务、数据看板、模板市场、发布预审）
+Web 面板：http://127.0.0.1:8766（视频预览/HLS、字幕编辑、发布分析、成片对比、批量 DAG）
 
-### v3.8 新增
+### v3.9 新增
 
-- 子进程 kill、Redis Worker、离线降级、RAG 向量检索
-- 发布预审、任务对比、A/B 回流、Playwright 半自动发布
-- YouTube/视频号/快手、模板市场、团队 Token
+- 视频预览（HLS）、字幕编辑器、场景检测驱动智能剪辑、可配置音频增强
+- SQLite 任务索引、Webhook 真触发流水线、云存储（boto3 可选）
+- 发布数据回流、合规报告、竖屏系列化、批量任务 DAG、多租户
+- lmstudio-finetune 深度联动 UI、成片 A/B 对比播放器、流水线 DAG 可视化
+- 桌面快捷启动 `start-desktop.ps1`
+
+### v3.8 回顾
 
 ### v3.7 回顾
 

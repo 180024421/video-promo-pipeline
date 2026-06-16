@@ -49,6 +49,25 @@ def _s3_upload(local: Path, *, endpoint: str, bucket: str, key: str, access_key:
     return url
 
 
+def _boto3_upload(local: Path, scfg: dict[str, Any], key: str) -> str:
+    import boto3
+    from botocore.client import Config
+
+    client = boto3.client(
+        "s3",
+        endpoint_url=scfg.get("endpoint") or None,
+        aws_access_key_id=scfg.get("access_key", ""),
+        aws_secret_access_key=scfg.get("secret_key", ""),
+        config=Config(signature_version="s3v4"),
+    )
+    bucket = scfg.get("bucket", "")
+    client.upload_file(str(local), bucket, key.lstrip("/"))
+    base = scfg.get("public_base_url", "").rstrip("/")
+    if base:
+        return f"{base}/{key.lstrip('/')}"
+    return f"{scfg.get('endpoint', '').rstrip('/')}/{bucket}/{key.lstrip('/')}"
+
+
 def upload_to_storage(local: Path, cfg: dict[str, Any], *, remote_key: str | None = None) -> dict[str, Any]:
     """上传文件到云存储，支持 S3/OSS/COS。"""
     scfg = (cfg.get("cloud_storage") or cfg.get("storage")) or {}
@@ -59,6 +78,15 @@ def upload_to_storage(local: Path, cfg: dict[str, Any], *, remote_key: str | Non
     endpoint = scfg.get("endpoint", "")
     bucket = scfg.get("bucket", "")
     key = remote_key or f"vpp/{local.name}"
+
+    if scfg.get("use_boto3", False):
+        try:
+            url = _boto3_upload(local, scfg, key)
+            return {"ok": True, "url": url, "key": key, "backend": "boto3"}
+        except ImportError:
+            return {"ok": False, "detail": "boto3 未安装，pip install boto3"}
+        except Exception as e:
+            return {"ok": False, "detail": str(e)}
 
     if backend in ("s3", "oss", "cos"):
         url = _s3_upload(

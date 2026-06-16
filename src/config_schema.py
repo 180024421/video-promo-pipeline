@@ -9,6 +9,7 @@ KNOWN_SECTIONS = {
     "video_quality", "notifications", "rate_limit", "rag", "video_qc", "scheduler",
     "distributed", "offline", "gpu_budget", "publish_preflight", "browser_publish",
     "platform_extra", "i18n_workflow", "team", "tenant",
+    "cloud_storage", "webhook_trigger", "audio_enhance", "scene_detect",
 }
 
 

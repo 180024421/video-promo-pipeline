@@ -1,6 +1,7 @@
 config.yaml
 terminology.yaml
 output/
+data/
 watch_in/
 logs/
 __pycache__/

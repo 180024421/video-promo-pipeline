@@ -15,7 +15,7 @@ from .subtitle_burn import resolve_ffmpeg
 console = Console()
 
 
-def _build_clip_prompt(transcript: str, segments: list[dict[str, Any]], cfg: dict[str, Any]) -> str:
+def _build_clip_prompt(transcript: str, segments: list[dict[str, Any]], cfg: dict[str, Any], scene_hints: list[float] | None = None) -> str:
     scfg = cfg.get("smart_cut") or {}
     target = int(scfg.get("target_duration_sec", 90))
     min_clip = float(scfg.get("min_clip_sec", 3))
@@ -25,6 +25,10 @@ def _build_clip_prompt(transcript: str, segments: list[dict[str, Any]], cfg: dic
         f'{s["start"]:.1f}-{s["end"]:.1f}s: {s.get("text", "")[:50]}'
         for s in segments[:100]
     )
+    scene_block = ""
+    if scene_hints:
+        times = ", ".join(f"{t:.1f}s" for t in scene_hints[:30])
+        scene_block = f"\n检测到以下转场/场景切换点（优先在切换点附近剪辑）：{times}\n"
     return textwrap.dedent(f"""\
         你是短视频剪辑师。根据转写内容，选出应保留的片段并输出 JSON（不要 markdown）。
         目标：剪成约 {target} 秒的精华版。
@@ -33,7 +37,7 @@ def _build_clip_prompt(transcript: str, segments: list[dict[str, Any]], cfg: dic
         - clips 数组，每项含 start、end（秒，浮点）
         - 每段至少 {min_clip} 秒，按时间顺序，不要重叠
         - 总时长尽量接近 {target} 秒
-
+        {scene_block}
         转写分段：
         ---
         {seg_preview}
@@ -52,6 +56,8 @@ def generate_clip_plan(
     segments: list[dict[str, Any]],
     cfg: dict[str, Any],
     out_dir: Path,
+    *,
+    scene_hints: list[float] | None = None,
 ) -> list[dict[str, Any]]:
     scfg = cfg.get("smart_cut") or {}
     if not scfg.get("enabled", False):
@@ -63,7 +69,7 @@ def generate_clip_plan(
         return []
 
     client = make_lm_client(cfg)
-    prompt = _build_clip_prompt(transcript, segments, cfg)
+    prompt = _build_clip_prompt(transcript, segments, cfg, scene_hints)
     console.print("[cyan]LM Studio 智能剪辑规划...[/cyan]")
     content = call_lm(client, prompt, cfg, "你是专业的短视频剪辑师。")
     data = parse_json_content(content)

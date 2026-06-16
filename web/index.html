@@ -516,6 +516,37 @@
       <div id="template-market-list"></div>
     </div>
     <div class="card">
+      <div class="card-title">lmstudio-finetune 联动</div>
+      <div id="finetune-deep-status" class="hint-text">加载中...</div>
+      <div class="btn-row" style="margin-top:8px">
+        <button type="button" class="btn btn-primary btn-sm" id="btn-export-finetune">导出训练数据</button>
+        <a class="btn btn-secondary btn-sm" href="http://127.0.0.1:7860" target="_blank">打开 finetune 控制台</a>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">批量任务 DAG</div>
+      <div id="batch-dag-status" class="hint-text"></div>
+      <div class="btn-row" style="margin-top:8px">
+        <button type="button" class="btn btn-secondary btn-sm" id="btn-batch-plan">从 watch_in 生成计划</button>
+        <button type="button" class="btn btn-primary btn-sm" id="btn-batch-run">运行下一个</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">成片对比播放</div>
+      <select id="compare-job" style="min-width:180px"><option value="">选择任务...</option></select>
+      <div id="compare-players" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">流水线 DAG</div>
+      <div id="pipeline-dag-viz" class="hint-text" style="font-family:monospace;font-size:0.8rem;max-height:300px;overflow:auto"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">多租户</div>
+      <div id="tenant-info" class="hint-text"></div>
+      <input id="tenant-id-input" placeholder="工作区 ID" style="margin-top:8px">
+      <button type="button" class="btn btn-secondary btn-sm" id="btn-set-tenant" style="margin-top:8px">切换工作区</button>
+    </div>
+    <div class="card">
       <div class="card-title">Whisper 热词</div>
       <input id="hotwords-input" placeholder="Spring Boot, Redis, JetLinks" style="width:100%;margin-bottom:8px">
       <button type="button" class="btn btn-primary btn-sm" id="btn-save-hotwords">保存热词到配置</button>
@@ -685,5 +716,6 @@
 </div>
 
 <script src="/static/app.js"></script>
+<script src="/static/v39.js"></script>
 </body>
 </html>
